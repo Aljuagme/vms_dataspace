@@ -1,0 +1,65 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VMS - Volunteer Management System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{% static 'vms/style.css'%} " rel="stylesheet">
+</head>
+<body>
+    <div class="header">
+        <div class="container header-content">
+            <div class="logo">VMS</div>
+            <div class="nav">
+                <a href="{% url 'vms:index' %}">Home</a>
+                {% if request.session.volunteer_id %}
+                    <a href="{% url 'vms:dashboard' request.session.volunteer_id %}">Dashboard</a>
+                    <a href="{% url 'vms:events_page' request.session.volunteer_id %}">Events</a>
+                    <a href="{% url 'vms:certificate' request.session.volunteer_id %}">Certificates</a>
+                    <a href="{% url 'vms:logout' %}" class="btn-logout">Logout</a>
+                {% else %}
+                    <a href="{% url 'vms:login' %}">Login</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        {% if not request.session.volunteer_id and request.path != '/login/' %}
+            <script>
+                window.location.href = "{% url 'vms:login' %}";
+            </script>
+        {% endif %}
+
+        {% block content %}
+        <!-- Content will be injected here by Django -->
+        {% endblock %}
+    </div>
+
+    <script>
+        // Check if user is logged in on every page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const volunteerId = "{{ request.session.volunteer_id|default:'' }}";
+            const currentPath = window.location.pathname;
+            const loginUrl = "{% url 'vms:login' %}";
+
+            // If not logged in and not on login page, redirect to login
+            if (!volunteerId && currentPath !== loginUrl) {
+                window.location.href = loginUrl;
+                return;
+            }
+
+            // If logged in and on login page, redirect to dashboard
+            if (volunteerId && currentPath === loginUrl) {
+                // Only redirect if we have a valid volunteer ID
+                if (volunteerId) {
+                    window.location.href = "{% url 'vms:dashboard' 0 %}".replace('0', volunteerId);
+                }
+            }
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

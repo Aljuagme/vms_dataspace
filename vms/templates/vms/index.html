@@ -1,0 +1,12 @@
+{% extends "vms/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>Welcome</h2>
+    <p>This prototype demonstrates a Volunteer Management Data Space concept. Use the links to create a volunteer, import history, request certificates, and discover tasks across federated catalogs (simulated).</p>
+    <ul>
+      <li><a href="{% url 'vms:login' %}">Create volunteer &amp; import history (Scenario 1)</a></li>
+      <li>After signup, you'll be redirected to the dashboard to view consolidated hours and request certificates (Scenario 2)</li>
+      <li><a href="{% url 'vms:events_page' request.session.volunteer_id %}">Task discovery &amp; publish (Scenario 3)</a></li>
+    </ul>
+  </div>
+{% endblock %}

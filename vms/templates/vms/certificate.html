@@ -1,0 +1,33 @@
+{% extends "vms/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>Request Certificate — {{ volunteer.name }}</h2>
+    <p>Pick activities from your profile to include in an official certificate (mocked verification).</p>
+    <div id="activities"></div>
+    <button id="do-cert" data-vid="{{ volunteer.id }}" class="btn">Request Certificate</button>
+    <div id="cert-result"></div>
+  </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(async function(){
+  const vid = "{{ volunteer.id }}";
+  const activitiesDiv = document.getElementById("activities");
+  const resultDiv = document.getElementById("cert-result");
+  const res = await fetch(`/api/volunteer/${vid}/dashboard/`);
+  const j = await res.json();
+  const acts = j.activities || [];
+  activitiesDiv.innerHTML = acts.map(a => `<label><input type="checkbox" value="${a.id}" data-provider="${a['provider__name']||''}"/> ${a.title} — ${a.hours}h — ${a['provider__name']||''}</label><br>`).join("");
+  document.getElementById("do-cert").onclick = async ()=>{
+    const checked = Array.from(activitiesDiv.querySelectorAll("input:checked")).map(cb => {
+      return {"id": cb.value, "provider": cb.dataset.provider, "title": cb.parentNode.textContent.trim()}
+    });
+    if(!checked.length){ alert("Select activities"); return; }
+    const r = await fetch("/api/certificate/request/", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({volunteer_id: vid, items: checked})});
+    const resj = await r.json();
+    resultDiv.innerHTML = `<pre>${JSON.stringify(resj, null, 2)}</pre>`;
+  };
+})();
+</script>
+{% endblock %}

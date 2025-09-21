@@ -1,0 +1,71 @@
+{% extends "vms/base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Onboard an Organization (simulated DSGA flow)</h2>
+  <p>Use this form to submit onboarding metadata for an organization (e.g. <strong>NewInTown</strong>).
+     The DSGA verification pipeline will run and the system will log each step.</p>
+
+  <form id="onboard-form">
+    <label>Display name (name)</label>
+    <input name="name" value="NewInTown">
+    <label>Legal name</label>
+    <input name="legal_name" value="New In Town Volunteer Org Ltd">
+    <label>Registration number</label>
+    <input name="registration_number" value="NIT-2025-001">
+    <label>Contact email</label>
+    <input name="contact_email" value="contact@newintown.example">
+    <label>Connector endpoint (URL)</label>
+    <input name="connector_endpoint" value="https://connector.newintown.example/">
+    <label>Connector certificate thumbprint</label>
+    <input name="certificate_thumbprint" value="ABCDEF0123456789ABCDEF0123456789">
+    <label>Privacy policy URL (optional)</label>
+    <input name="privacy_policy_url" value="https://newintown.example/privacy">
+    <label>Sample catalog (JSON array) — include at least two items</label>
+    <textarea name="catalog_sample" rows="6">[
+  {"id":"n1","title":"Neighborhood First Aid shift","description":"Support at first aid station","skills":["First Aid","Team Leadership"],"hours":4},
+  {"id":"n2","title":"Park cleanup & awareness","description":"Park cleanup event","skills":["Environmental Care"],"hours":3}
+]</textarea>
+    <br>
+    <button id="do-onboard" class="btn">Submit onboarding request</button>
+  </form>
+
+  <div id="onboard-result" style="margin-top:12px"></div>
+  <hr>
+  <h3>Quick help — what the DSGA checks (prototype):</h3>
+  <ul>
+    <li>Metadata completeness (legal identity, contacts, connector info)</li>
+    <li>Connector certificate presence (thumbprint) and endpoint</li>
+    <li>Registration number plausibility (basic format check)</li>
+    <li>Sample catalog structure and ontology mapping to ESCO-like codes</li>
+    <li>Contract template generation and signature simulation</li>
+    <li>Final approval and registration in the federated catalog</li>
+  </ul>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById("onboard-form").addEventListener("submit", async function(ev){
+  ev.preventDefault();
+  const form = ev.target;
+  const data = {
+    name: form.name.value,
+    legal_name: form.legal_name.value,
+    registration_number: form.registration_number.value,
+    contact_email: form.contact_email.value,
+    connector_endpoint: form.connector_endpoint.value,
+    certificate_thumbprint: form.certificate_thumbprint.value,
+    privacy_policy_url: form.privacy_policy_url.value,
+    catalog_sample: JSON.parse(form.catalog_sample.value)
+  };
+  document.getElementById("onboard-result").innerText = "Submitting...";
+  const res = await fetch("/vms/api/edc/onboard_provider/", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(data)
+  });
+  const j = await res.json();
+  document.getElementById("onboard-result").innerText = JSON.stringify(j, null, 2);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "vms/base.html" %}
+{% load static %}
+{% block content %}
+<div class="container text-center">
+  <h2 class="mb-4">All Upcoming Events</h2>
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      {% for e in events %}
+          {% include "vms/partials/event_card.html" with e=e volunteer=volunteer show_details=True %}
+        {% empty %}
+          <div class="alert alert-info">No more events.</div>
+        {% endfor %}
+    </div>
+  </div>
+</div>
+      <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% endblock %}

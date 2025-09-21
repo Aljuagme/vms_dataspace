@@ -1,0 +1,73 @@
+{% load static %}
+<div class="card mb-4 shadow-sm" id="event-{{ e.id }}">
+  <div class="row g-0">
+    <div class="col-md-4">
+      <img src="{% static e.image_url %}"
+     class="img-fluid rounded-start h-100 object-fit-cover"
+     alt="{{ e.name }}">
+    </div>
+    <div class="col-md-8">
+      <div class="card-body">
+        <h3 class="card-title h5">{{ e.name }}</h3>
+        <p class="fw-light">Provided by: <strong>{{ e.organization.name }}</strong></p>
+        <p class="text-muted">{{ e.description }}</p>
+
+        <!-- Extra fields if needed -->
+        {% if show_details %}
+          <div class="row mt-3">
+            <div class="col-sm-4">
+              <p><i class="bi bi-clock me-2"></i>{{ e.duration_hours }}h</p>
+              <p><i class="bi bi-geo-alt me-2"></i>{{ e.location }}</p>
+            </div>
+            <div class="col-sm-8">
+              <p><i class="bi bi-people me-2"></i>{{ e.registered_volunteers }} volunteers</p>
+              <p>
+                  <i class="bi bi-tags me-2"></i>
+                  {% if e.skill_status %}
+                    {% for skill, status in e.skill_status.items %}
+                      {% if status == "has" %}
+                        <span class="badge bg-success me-1">{{ skill }}</span>
+                      {% else %}
+                        <span class="badge bg-warning text-dark me-1">{{ skill }}</span>
+                      {% endif %}
+                    {% endfor %}
+                  {% else %}
+                    <span class="badge bg-light text-dark">No skill required</span>
+                  {% endif %}
+              </p>
+
+            </div>
+          </div>
+        {% endif %}
+
+        <form method="post"
+              action="{% if e.is_registered %}
+                         {% url 'vms:unregister_event' volunteer.id e.id %}
+                       {% else %}
+                         {% url 'vms:register_event' volunteer.id e.id %}
+                       {% endif %}">
+          {% csrf_token %}
+          {% if e.is_registered %}
+              <button class="btn btn-danger btn-sm">
+                <i class="bi bi-x-circle me-1"></i> Unregister
+              </button>
+            {% else %}
+              {% if e.can_register %}
+                <button class="btn btn-primary btn-sm">
+                  <i class="bi bi-plus-circle me-1"></i> Register
+                </button>
+              {% else %}
+                <button class="btn btn-secondary btn-sm" disabled>
+                  <i class="bi bi-lock me-1"></i> Cannot Register
+                </button>
+                <small class="text-warning d-block mt-1">
+                  Missing required skills
+                </small>
+              {% endif %}
+            {% endif %}
+
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

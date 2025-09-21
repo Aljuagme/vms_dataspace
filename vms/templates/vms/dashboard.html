@@ -1,0 +1,147 @@
+{% extends "vms/base.html" %}
+{% load static %}
+{% block content %}
+
+<!-- Header -->
+<header class="text-center py-4 bg-light mb-4 rounded">
+
+  <!-- Organization Name + Verified Icon -->
+  <div class="d-inline-flex align-items-center gap-3 mb-2">
+    <h1 class="display-4 fw-bold text-primary mb-0">{{ volunteer.organization.name }}</h1>
+      {% if volunteer.organization.member_ds %}
+        <img
+          src="{% static 'vms/images/verified.png' %}"
+          alt="Verified Organization"
+          width="100"
+          height="50"
+          onclick="toggleDataSpace()"
+          style="cursor: pointer;">
+      {% endif %}
+  </div>
+
+  <!-- Welcome + Role -->
+  <p class="lead text-muted mb-3">
+    Welcome, {{ volunteer.name }} —
+    {% if volunteer.is_manager %}
+      <span class="badge bg-warning">Manager</span>
+    {% else %}
+      <span class="badge bg-info">Volunteer</span>
+    {% endif %}
+  </p>
+
+  <!-- Join/Leave Data Space -->
+  <div class="d-inline-flex align-items-center gap-3">
+    <button
+      id="ds-toggle"
+      class="btn {% if volunteer.organization.member_ds %}btn-danger{% else %}btn-success{% endif %}"
+      style="font-size: x-large">
+      {% if volunteer.organization.member_ds %}
+        Leave VMS Data Space
+      {% else %}
+        Join VMS Data Space
+      {% endif %}
+    </button>
+  </div>
+</header>
+
+<script>
+  function toggleDataSpace() {
+    // Placeholder for API call
+    console.log("Data space toggle clicked");
+  }
+</script>
+
+
+  <!-- Body -->
+  <div class="row px-3">
+    <!-- Events List -->
+    <div class="col-lg-8 col-md-7">
+      <h2 class="mb-4">Upcoming Events</h2>
+
+      {% for e in events_registered %}
+        {% include "vms/partials/event_card.html" with e=e volunteer=volunteer show_details=True %}
+      {% empty %}
+        <div class="alert alert-info">No registered events.</div>
+      {% endfor %}
+    </div>
+
+    <!-- Sticky Sidebar -->
+    <div class="col-lg-4 col-md-5">
+      <div class="sticky-top" style="top: 20px; z-index: 100;">
+
+        <!-- Events Card -->
+        <div class="card shadow-sm mb-3">
+          <div class="card-header bg-primary text-white">Events</div>
+          <div class="list-group list-group-flush">
+            {% for e in events_unregistered %}
+              <a href="{% url 'vms:events_page' request.session.volunteer_id %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                <div>
+                  <h6 class="mb-1">{{ e.name }}</h6>
+                </div>
+                <span class="badge bg-primary rounded-pill">{{ e.registered_volunteers }} volunteers</span>
+              </a>
+            {% empty %}
+              <div class="text-center text-muted py-3">No upcoming events</div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Quick Stats Card -->
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">Your Activity</h5>
+            <div class="d-flex justify-content-between mb-2">
+              <span>Registered Events:</span>
+              <strong>{{ registered_events_count }}</strong>
+            </div>
+            <div class="d-flex justify-content-between mb-2">
+              <span>Completed Events:</span>
+              <strong>{{ completed_events_count }}</strong>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span>Hours Volunteered:</span>
+              <strong>{{ hours_volunteered }}</strong>
+            </div>
+            <div class="progress mt-3" style="height: 10px;">
+              <div class="progress-bar" role="progressbar"
+                   style="width: 43%;"
+                   aria-valuenow="43"
+                   aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <small class="text-muted">57% to next milestone</small>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <style>
+    .card {
+      transition: transform 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-5px);
+    }
+    .object-fit-cover {
+      object-fit: cover;
+    }
+    .badge {
+      font-size: 0.75em;
+    }
+    .nav-tabs .nav-link {
+      color: rgba(255,255,255,0.8);
+      border: none;
+    }
+    .nav-tabs .nav-link.active {
+      color: #fff;
+      background: transparent;
+      border-bottom: 2px solid #fff;
+    }
+  </style>
+{% endblock %}
