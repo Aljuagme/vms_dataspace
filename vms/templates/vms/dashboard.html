@@ -30,18 +30,19 @@
   </p>
 
   <!-- Join/Leave Data Space -->
-  <div class="d-inline-flex align-items-center gap-3">
-    <button
-      id="ds-toggle"
-      class="btn {% if volunteer.organization.member_ds %}btn-danger{% else %}btn-success{% endif %}"
-      style="font-size: x-large">
-      {% if volunteer.organization.member_ds %}
-        Leave VMS Data Space
-      {% else %}
-        Join VMS Data Space
-      {% endif %}
-    </button>
-  </div>
+    <div class="d-inline-flex align-items-center gap-3">
+      <a
+        href="{% url 'vms:onboard' volunteer.id %}"
+        class="btn {% if volunteer.organization.member_ds %}btn-danger{% else %}btn-success{% endif %}"
+        style="font-size: x-large">
+        {% if volunteer.organization.member_ds %}
+          Leave VMS Data Space
+        {% else %}
+          Join VMS Data Space
+        {% endif %}
+      </a>
+    </div>
+
 </header>
 
 <script>

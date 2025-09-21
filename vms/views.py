@@ -1,6 +1,9 @@
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponseBadRequest
-from .models import Organization, Volunteer, VolunteerEvent, Certificate, Skill, LogEntry
+from django.utils import timezone
+
+from vms.services.decorators import volunteer_login_required
+from .models import Organization, Volunteer, VolunteerEvent, LogEntry
 from .forms import LoginForm
 import json, hashlib
 from django.views.decorators.csrf import csrf_exempt
@@ -8,27 +11,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404, redirect
 from django.contrib import messages
 
-from django.db.models import Sum
+from .events import annotate_event
+from .services.logging import log_event
 
-
-from functools import wraps
-
-def volunteer_login_required(view_func):
-    @wraps(view_func)
-    def wrapper(request, *args, **kwargs):
-        if "volunteer_id" not in request.session:
-            return redirect("vms:login")
-        return view_func(request, *args, **kwargs)
-    return wrapper
-
-# ---------- helper: structured logging (in DB) ----------
-def log_event(action, details="", level="INFO"):
-    """
-    Create a LogEntry; details should be a string (JSON if structured).
-    Keep messages clear for presentation in defense.
-    """
-    entry = LogEntry.objects.create(action=action, details=details, level=level)
-    return entry
 
 # ---------------- UI Views ----------------
 @volunteer_login_required
@@ -62,36 +47,11 @@ def dashboard_view(request, vid):
     org = v.organization
 
     all_events = org.events.all() if org else VolunteerEvent.objects.none()
-    registered_events = v.events.all()
-    unregistered_events = all_events.exclude(id__in=registered_events)
+    registered_ids = set(v.events.values_list("id", flat=True))
 
-    # Mark registered status
-    for event in registered_events:
-        event.is_registered = True
-    for event in unregistered_events:
-        event.is_registered = False
-
-    # 🔹 Add skill checks for all events
-    def annotate_event(event):
-        event_skills = list(event.skills.all())
-        volunteer_skills = set(v.skills.all())
-        skill_status = {}
-        missing_skills = []
-
-        for s in event_skills:
-            if s in volunteer_skills:
-                skill_status[s.label] = "has"
-            else:
-                skill_status[s.label] = "missing"
-                missing_skills.append(s.label)
-
-        event.skill_status = skill_status       # dict: { "First Aid": "has", "CPR": "missing" }
-        event.missing_skills = missing_skills   # list of missing ones
-        event.can_register = len(missing_skills) == 0  # ✅ True only if all required are met
-        return event
-
-    registered_events = [annotate_event(e) for e in registered_events]
-    unregistered_events = [annotate_event(e) for e in unregistered_events]
+    # Split events into registered/unregistered
+    registered_events = [annotate_event(e, v, registered_ids) for e in all_events if e.id in registered_ids]
+    unregistered_events = [annotate_event(e, v, registered_ids) for e in all_events if e.id not in registered_ids]
 
     volunteers = org.volunteers.all() if org else Volunteer.objects.none()
 
@@ -123,29 +83,8 @@ def events_page(request, vid):
     all_events = org.events.all() if org else VolunteerEvent.objects.none()
     registered_ids = set(v.events.values_list("id", flat=True))
 
-    def annotate_event(event):
-        # Mark if already registered
-        event.is_registered = event.id in registered_ids
-
-        # 🔹 Skill eligibility
-        event_skills = list(event.skills.all())
-        volunteer_skills = set(v.skills.all())
-        skill_status = {}
-        missing_skills = []
-
-        for s in event_skills:
-            if s in volunteer_skills:
-                skill_status[s.label] = "has"
-            else:
-                skill_status[s.label] = "missing"
-                missing_skills.append(s.label)
-
-        event.skill_status = skill_status
-        event.missing_skills = missing_skills
-        event.can_register = len(missing_skills) == 0  # ✅ True if all required are met
-        return event
-
-    all_events = [annotate_event(e) for e in all_events]
+    # Annotate all events
+    all_events = [annotate_event(e, v, registered_ids) for e in all_events]
 
     return render(request, "vms/events.html", {
         "volunteer": v,
@@ -153,11 +92,18 @@ def events_page(request, vid):
     })
 
 
-
 def certificate_view(request, vid):
     v = get_object_or_404(Volunteer, pk=vid)
     return render(request, "vms/certificate.html", {"volunteer": v})
 
+
+def onboard_view(request, vid):
+    v = get_object_or_404(Volunteer, pk=vid)
+    return render(request, "vms/onboard.html", {"volunteer": v})
+
+
+def logs_view(request):
+    return render(request, "vms/logs.html")
 
 # ---------------- API Endpoints ----------------
 
@@ -178,62 +124,9 @@ def api_register_volunteer(request):
 
 @csrf_exempt
 def api_import_history(request, vid):
+    print("importing history from {}".format(vid))
     pass
 
-def api_dashboard(request, vid):
-    v = get_object_or_404(Volunteer, pk=vid)
-    activities = [
-        {
-            "id": a.id,
-            "title": a.title,
-            "hours": float(a.hours),
-            "date": a.date.isoformat() if a.date else None,
-            "skills": [s.label for s in a.skills.all()],
-            "provider": a.provider.name if a.provider else None,
-        }
-        for a in v.activities.all()
-    ]
-    return JsonResponse({
-        "profile": {"id": v.id, "name": v.name, "email": v.email},
-        "total_hours": v.total_hours(),
-        "activities": activities,
-        "jsonld": v.to_jsonld(),  # export JSON-LD profile
-    })
-
-@csrf_exempt
-def api_request_certificate(request):
-    if request.method != "POST":
-        return HttpResponseBadRequest("POST only")
-    payload = json.loads(request.body)
-    vid = payload.get("volunteer_id")
-    items = payload.get("items", [])
-    v = get_object_or_404(Volunteer, pk=vid)
-
-    verification = []
-    ok_all = True
-    for it in items:
-        prov_name = it.get("provider")
-        ok = Organization.objects.filter(name=prov_name).exists()
-        verification.append({"item": it, "ok": ok})
-        if not ok:
-            ok_all = False
-    if not ok_all:
-        return JsonResponse({"status": "pending_verification", "details": verification})
-
-    proof = hashlib.sha256(json.dumps(items, sort_keys=True).encode()).hexdigest()
-    cert = Certificate.objects.create(volunteer=v, items=items, proof_hash=proof)
-    return JsonResponse({
-        "status": "issued",
-        "certificate_id": cert.id,
-        "proof": proof,
-        "jsonld": cert.to_jsonld(),
-    })
-
-
-
-def api_orgs(request):
-    orgs = list(Organization.objects.values("id", "name"))
-    return JsonResponse({"organizations": orgs})
 
 
 @volunteer_login_required
@@ -247,6 +140,115 @@ def register_event(request, vid, eid):
         messages.success(request, f"You have registered for {event.name}.")
     return redirect("vms:dashboard", vid=vid)
 
+@csrf_exempt
+def api_onboard_organization(request):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Use POST (JSON)")
+
+    payload = json.loads(request.body)
+    log_event("OnboardingRequestReceived", json.dumps(payload))
+
+    # Step 1: metadata validation
+    required = ["name", "contact_email", "connector_endpoint", "certificate_thumbprint", "catalog_sample"]
+    missing = [f for f in required if not payload.get(f)]
+    if missing:
+        msg = {"status": "rejected", "reason": f"Missing fields: {missing}"}
+        log_event("OnboardingRejected.MissingMetadata", json.dumps(msg), level="WARN")
+        return JsonResponse(msg, status=400)
+    log_event("MetadataValidation", f"All required fields present for {payload.get('name')}")
+
+    # Step 2: governance check
+    if not payload.get("privacy_policy_url"):
+        log_event("GovernanceCheck", "No privacy_policy_url provided", level="WARN")
+    else:
+        log_event("GovernanceCheck", f"Privacy policy present: {payload['privacy_policy_url']}")
+
+    # Step 3: volunteer schema mapping simulation
+    mapping_log = []
+    for local, mapped in Organization.local_volunteer_schema.items():
+        mapping_log.append(f"{local} → {mapped}")
+    log_event("VolunteerSchemaMapping", json.dumps(mapping_log))
+
+    # Step 4: ontology mapping for skills
+    catalog = payload.get("catalog_sample", [])
+    mapped_catalog = []
+    unknowns = 0
+    for item in catalog:
+        skills = item.get("skills", [])
+        mapped_skills = []
+        for s in skills:
+            esco = Organization.local_skill_mapping.get(s, None)
+            if esco:
+                mapped_skills.append({"skill": s, "esco": esco})
+            else:
+                mapped_skills.append({"skill": s, "esco": "UNKNOWN"})
+                unknowns += 1
+        mapped_catalog.append({
+            "title": item.get("title"),
+            "hours": item.get("hours"),
+            "mapping": mapped_skills
+        })
+    log_event("SkillMapping", json.dumps(mapped_catalog))
+
+    # Step 5: contract generation
+    contract = {
+        "template_id": f"tmpl-{hashlib.sha1(payload['name'].encode()).hexdigest()[:8]}",
+        "usage": "volunteer-activity-sharing",
+        "constraints": {"purpose": "volunteer_record_verification", "retention": "36 months"}
+    }
+    log_event("ContractTemplateGenerated", json.dumps(contract))
+
+    # Step 6: decision
+    if unknowns > 2:
+        msg = {"status": "rejected", "reason": f"Too many unknown skills ({unknowns})"}
+        log_event("OnboardingRejected.OntologyGap", json.dumps(msg), level="WARN")
+        return JsonResponse(msg, status=400)
+
+    # Step 7: persist organization
+    org = Organization.objects.create(
+        name=payload["name"],
+        contact_email=payload["contact_email"],
+        connector_endpoint=payload["connector_endpoint"],
+        certificate_thumbprint=payload["certificate_thumbprint"],
+        metadata_json=payload,
+        member_ds=True
+    )
+    log_event("OnboardingApproved", f"{org.name} accepted into Data Space")
+
+    return JsonResponse({
+        "status": "approved",
+        "organization_id": org.id,
+        "volunteer_schema": mapping_log,
+        "mapped_catalog": mapped_catalog,
+        "contract": contract
+    })
+
+
+def api_get_logs(request):
+    """
+    Returns recent log entries as JSON for the log panel.
+    """
+    limit = int(request.GET.get("limit", 50))
+    logs = LogEntry.objects.all().order_by("-timestamp")[:limit]
+    data = []
+    for l in logs:
+        data.append({
+            "timestamp": l.timestamp.isoformat(),
+            "level": l.level,
+            "action": l.action,
+            "details": l.details
+        })
+    return JsonResponse({"count": len(data), "entries": data})
+
+
+def api_catalog(request, org_id):
+    org = get_object_or_404(Organization, pk=org_id)
+    events = [
+        e.to_jsonld() | {"skills_needed": e.skills_needed}
+        for e in org.events.all()
+    ]
+    return JsonResponse({"org": org.to_jsonld(), "events": events})
+
 
 @volunteer_login_required
 def unregister_event(request, vid, eid):
@@ -259,3 +261,6 @@ def unregister_event(request, vid, eid):
         messages.info(request, f"You have unregistered from {event.name}.")
     return redirect("vms:dashboard", vid=vid)
 
+def api_orgs(request):
+    orgs = list(Organization.objects.values("id", "name"))
+    return JsonResponse({"organizations": orgs})

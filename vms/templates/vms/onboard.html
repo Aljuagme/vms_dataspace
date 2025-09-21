@@ -1,71 +1,146 @@
 {% extends "vms/base.html" %}
 {% block content %}
-<div class="card">
-  <h2>Onboard an Organization (simulated DSGA flow)</h2>
-  <p>Use this form to submit onboarding metadata for an organization (e.g. <strong>NewInTown</strong>).
-     The DSGA verification pipeline will run and the system will log each step.</p>
+<div class="card p-4 shadow-sm">
+  <h2 class="mb-3">Onboard an Organization into the Data Space</h2>
+  <p><strong>Scenario:</strong> Organization <em>NewInTown</em> requests to join the VMS Data Space.
+     The DSGA will check the required metadata, validate trust, review the catalog, and perform ontology mapping.</p>
 
-  <form id="onboard-form">
-    <label>Display name (name)</label>
-    <input name="name" value="NewInTown">
-    <label>Legal name</label>
-    <input name="legal_name" value="New In Town Volunteer Org Ltd">
-    <label>Registration number</label>
-    <input name="registration_number" value="NIT-2025-001">
-    <label>Contact email</label>
-    <input name="contact_email" value="contact@newintown.example">
-    <label>Connector endpoint (URL)</label>
-    <input name="connector_endpoint" value="https://connector.newintown.example/">
-    <label>Connector certificate thumbprint</label>
-    <input name="certificate_thumbprint" value="ABCDEF0123456789ABCDEF0123456789">
-    <label>Privacy policy URL (optional)</label>
-    <input name="privacy_policy_url" value="https://newintown.example/privacy">
-    <label>Sample catalog (JSON array) — include at least two items</label>
-    <textarea name="catalog_sample" rows="6">[
-  {"id":"n1","title":"Neighborhood First Aid shift","description":"Support at first aid station","skills":["First Aid","Team Leadership"],"hours":4},
-  {"id":"n2","title":"Park cleanup & awareness","description":"Park cleanup event","skills":["Environmental Care"],"hours":3}
-]</textarea>
-    <br>
-    <button id="do-onboard" class="btn">Submit onboarding request</button>
-  </form>
+  <!-- DSGA Requirements -->
+  <div class="alert alert-info">
+    <h5 class="mb-2">DSGA requires:</h5>
+    <ul class="mb-0">
+      <li>Basic metadata (name, contact, connector, certificate)</li>
+      <li>Privacy policy (optional but recommended)</li>
+      <li>Organization’s catalog (events to share)</li>
+      <li>Ontology mapping of skills to ESCO</li>
+      <li>Contract acceptance</li>
+    </ul>
+  </div>
 
-  <div id="onboard-result" style="margin-top:12px"></div>
-  <hr>
-  <h3>Quick help — what the DSGA checks (prototype):</h3>
-  <ul>
-    <li>Metadata completeness (legal identity, contacts, connector info)</li>
-    <li>Connector certificate presence (thumbprint) and endpoint</li>
-    <li>Registration number plausibility (basic format check)</li>
-    <li>Sample catalog structure and ontology mapping to ESCO-like codes</li>
-    <li>Contract template generation and signature simulation</li>
-    <li>Final approval and registration in the federated catalog</li>
-  </ul>
+<form id="onboard-form" class="mb-4" novalidate>
+  <label class="form-label" for="org-name">Organization name</label>
+    <input id="org-name" class="form-control" name="name" value="NewInTown" autocomplete="organization">
+
+    <label class="form-label" for="org-email">Contact email</label>
+    <input id="org-email" type="email" class="form-control" name="contact_email" value="contact@newintown.example" autocomplete="email">
+
+    <label class="form-label" for="org-connector">Connector endpoint</label>
+    <input id="org-connector" type="url" class="form-control" name="connector_endpoint" value="https://connector.newintown.example/" autocomplete="url">
+
+    <label class="form-label" for="org-cert">Certificate thumbprint</label>
+    <input id="org-cert" class="form-control" name="certificate_thumbprint" value="ABCDEF0123456789ABCDEF0123456789" autocomplete="off">
+
+    <label class="form-label" for="org-privacy">Privacy policy URL</label>
+    <input id="org-privacy" type="url" class="form-control" name="privacy_policy_url" value="https://newintown.example/privacy" autocomplete="url">
+
+
+  <h5 class="mt-3">Catalog (events to publish)</h5>
+  <table class="table table-bordered" id="catalog-table">
+    <tr><th>Title</th><th>Skills</th><th>Hours</th></tr>
+    <tr>
+      <td><input class="form-control" value="Neighborhood First Aid shift"></td>
+      <td><input class="form-control" value="First Aid, Team Leadership"></td>
+      <td><input class="form-control" value="4"></td>
+    </tr>
+    <tr>
+      <td><input class="form-control" value="Park cleanup & awareness"></td>
+      <td><input class="form-control" value="Environmental Care"></td>
+      <td><input class="form-control" value="3"></td>
+    </tr>
+  </table>
+  <button class="btn btn-success mt-2">Submit onboarding</button>
+</form>
+
+<h4>DSGA Log</h4>
+<pre id="onboard-log" class="bg-dark text-light p-3 rounded small" style="max-height:250px; overflow:auto;">
+Waiting for submission...
+</pre>
+
+<div id="catalog-section" class="mt-4" style="display:none;">
+  <h4>Approved Catalog</h4>
+  <div id="catalog-view" class="list-group"></div>
 </div>
-{% endblock %}
+</div>
 
+{% endblock %}
 {% block extra_js %}
 <script>
-document.getElementById("onboard-form").addEventListener("submit", async function(ev){
-  ev.preventDefault();
-  const form = ev.target;
-  const data = {
-    name: form.name.value,
-    legal_name: form.legal_name.value,
-    registration_number: form.registration_number.value,
-    contact_email: form.contact_email.value,
-    connector_endpoint: form.connector_endpoint.value,
-    certificate_thumbprint: form.certificate_thumbprint.value,
-    privacy_policy_url: form.privacy_policy_url.value,
-    catalog_sample: JSON.parse(form.catalog_sample.value)
-  };
-  document.getElementById("onboard-result").innerText = "Submitting...";
-  const res = await fetch("/vms/api/edc/onboard_provider/", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(data)
+function collectCatalog() {
+  const rows = document.querySelectorAll("#catalog-table tr");
+  let items = [];
+  rows.forEach((r,i) => {
+    if (i === 0) return;
+    const title = r.cells[0].querySelector("input").value;
+    const skills = r.cells[1].querySelector("input").value.split(",").map(s => s.trim());
+    const hours = parseInt(r.cells[2].querySelector("input").value);
+    items.push({id: "item"+i, title, skills, hours});
   });
-  const j = await res.json();
-  document.getElementById("onboard-result").innerText = JSON.stringify(j, null, 2);
+  return items;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("onboard-form");
+  form.addEventListener("submit", async function(ev){
+    ev.preventDefault();
+    const data = {
+      name: form.name.value,
+      contact_email: form.contact_email.value,
+      connector_endpoint: form.connector_endpoint.value,
+      certificate_thumbprint: form.certificate_thumbprint.value,
+      privacy_policy_url: form.privacy_policy_url.value,
+      catalog_sample: collectCatalog()
+    };
+
+    const logBox = document.getElementById("onboard-log");
+    logBox.innerText = "▶ Submitting onboarding request...\n";
+
+    try {
+      const res = await fetch("{% url 'vms:api_onboard_organization' %}", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+      });
+      const j = await res.json();
+
+        if (j.status === "approved") {
+          logBox.innerText += "✔ Approved by DSGA\n\n";
+
+          // Show volunteer schema mappings
+          logBox.innerText += "Volunteer Schema Mapping:\n";
+          j.volunteer_schema.forEach(m => {
+            logBox.innerText += `   - ${m}\n`;
+          });
+
+          // Show skill mappings
+          logBox.innerText += "\nSkill Mapping:\n";
+          j.mapped_catalog.forEach(item => {
+            logBox.innerText += `• ${item.title}\n`;
+            item.mapping.forEach(m => {
+              logBox.innerText += `   - ${m.skill} → ${m.esco}\n`;
+            });
+          });
+
+
+        // Show catalog
+        const cRes = await fetch(`/api/catalog/${j.organization_id}/`);
+        const catalog = await cRes.json();
+        const view = document.getElementById("catalog-view");
+        view.innerHTML = "";
+        catalog.events.forEach(ev => {
+          const item = document.createElement("div");
+          item.className = "list-group-item";
+          item.innerHTML = `<strong>${ev["schema:name"]}</strong><br>
+            Skills: ${(ev.skills_needed || []).join(", ")}`;
+          view.appendChild(item);
+        });
+        document.getElementById("catalog-section").style.display = "block";
+      } else {
+        logBox.innerText += "✖ Rejected: " + j.reason + "\n";
+      }
+    } catch (err) {
+      logBox.innerText += "⚠ Error: " + err + "\n";
+    }
+  });
 });
 </script>
 {% endblock %}

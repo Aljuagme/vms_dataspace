@@ -14,6 +14,7 @@ venv.bak/
 *.sqlite3
 *.db
 
+
 # Static files (if collected)
 staticfiles/
 mediafiles/

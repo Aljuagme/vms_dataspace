@@ -24,15 +24,37 @@ def make_esco_uri(esco_id_or_uuid):
 
 # --- Domain models ---------------------------------------------------------
 class Organization(models.Model):
-    """
-    An organization or provider (maps to schema:Organization / provider in your prototype).
-    """
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=255)
     url = models.URLField(blank=True, default="")
-    description = models.TextField(blank=True, default="")
+
+    # Data space membership / governance
     member_ds = models.BooleanField(default=False)
     is_dsga = models.BooleanField(default=False)
+
+    # Core onboarding metadata
+    contact_email = models.EmailField(blank=True, default="")
+    connector_endpoint = models.URLField(blank=True, default="")
+    certificate_thumbprint = models.CharField(max_length=128, blank=True, default="")
+    metadata_json = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
+
+    # --- add local vocabularies ---
+    local_volunteer_schema = {
+        "firstName": "schema:givenName",
+        "lastName": "schema:familyName",
+        "homeTown": "schema:location",
+        "availability": "vms:availability",
+        "skills": "schema:skills",
+        "emailAddress": "schema:email",
+    }
+
+    local_skill_mapping = {
+        "CPR": "ESCO:skill:cpr-0001",
+        "Emergency Response": "ESCO:skill:disaster-0033",
+        "First Aid": "ESCO:skill:0001",
+        "Team Leadership": "ESCO:skill:0022",
+        "Environmental Care": "ESCO:skill:0044",
+    }
 
     def __str__(self):
         return self.name
@@ -42,9 +64,19 @@ class Organization(models.Model):
             "@type": "Organization",
             "@id": f"https://vms.example.org/orgs/{self.id}",
             "name": self.name,
-            **({"url": self.url} if self.url else {}),
-            **({"description": self.description} if self.description else {}),
+            "url": self.url,
+            "email": self.contact_email,
+            "connectorEndpoint": self.connector_endpoint,
         }
+
+    def catalog(self):
+        return {
+            "org": self.to_jsonld(),
+            "events": [e.to_jsonld() for e in self.events.all()],
+            "skills": [s.to_jsonld() for s in Skill.objects.filter(events__organization=self).distinct()]
+        }
+
+
 
 
 class Skill(models.Model):
