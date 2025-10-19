@@ -2,53 +2,44 @@
 {% block content %}
 <div class="card p-4 shadow-sm">
   <h2 class="mb-3">Onboard an Organization into the Data Space</h2>
-  <p><strong>Scenario:</strong> Organization <em>NewInTown</em> requests to join the VMS Data Space.
-     The DSGA will check the required metadata, validate trust, review the catalog, and perform ontology mapping.</p>
+  <p><strong>Scenario 1:</strong> Organization <em>Volunet</em> requests to join the VMS Data Space.
+     The Data Space Governance Authority (DSGA) will check the required metadata, validate trust, review the catalog, and perform ontology mapping.</p>
 
   <!-- DSGA Requirements -->
   <div class="alert alert-info">
-    <h5 class="mb-2">DSGA requires:</h5>
+    <h5 class="mb-2">Data Space Self-description (DSSD):</h5>
     <ul class="mb-0">
-      <li>Basic metadata (name, contact, connector, certificate)</li>
-      <li>Privacy policy (optional but recommended)</li>
+      <li>Basic metadata (name, contact)</li>
+      <li>Privacy policy</li>
       <li>Organization’s catalog (events to share)</li>
-      <li>Ontology mapping of skills to ESCO</li>
+      <li>Schema.org ontology mapping the skills to ESCO in JSON-LD format</li>
       <li>Contract acceptance</li>
     </ul>
   </div>
+  <h4 class="mb-3">Participant Self-description (PSD):</h4>
 
 <form id="onboard-form" class="mb-4" novalidate>
-  <label class="form-label" for="org-name">Organization name</label>
-    <input id="org-name" class="form-control" name="name" value="NewInTown" autocomplete="organization">
+  <label class="form-label" for="org-name">Organization name
+    <span title="The legal or common name of the organization">ℹ️</span>
+  </label>
+  <input id="org-name" class="form-control" name="name" value="Volunet" autocomplete="organization">
 
-    <label class="form-label" for="org-email">Contact email</label>
-    <input id="org-email" type="email" class="form-control" name="contact_email" value="contact@newintown.example" autocomplete="email">
+  <label class="form-label" for="org-email">Contact email
+    <span title="Contact point for governance and technical issues">ℹ️</span>
+  </label>
+  <input id="org-email" type="email" class="form-control" name="contact_email" value="volunet@gmail.org" autocomplete="email">
 
-    <label class="form-label" for="org-connector">Connector endpoint</label>
-    <input id="org-connector" type="url" class="form-control" name="connector_endpoint" value="https://connector.newintown.example/" autocomplete="url">
+  <label class="form-label" for="org-connector">Connector endpoint
+    <span title="Base URL of the organization's dataspace connector (where its catalog and events are published)">ℹ️</span>
+  </label>
+  <input id="org-connector" type="url" class="form-control" name="connector_endpoint" value="https://connector.volunet.edc/" autocomplete="url">
 
-    <label class="form-label" for="org-cert">Certificate thumbprint</label>
-    <input id="org-cert" class="form-control" name="certificate_thumbprint" value="ABCDEF0123456789ABCDEF0123456789" autocomplete="off">
+  <label class="form-label" for="org-privacy">Privacy policy URL
+    <span title="Public statement about how data will be processed and protected">ℹ️</span>
+  </label>
+  <input id="org-privacy" type="url" class="form-control" name="privacy_policy_url" value="https://volunet.contracts/privacy" autocomplete="url">
 
-    <label class="form-label" for="org-privacy">Privacy policy URL</label>
-    <input id="org-privacy" type="url" class="form-control" name="privacy_policy_url" value="https://newintown.example/privacy" autocomplete="url">
-
-
-  <h5 class="mt-3">Catalog (events to publish)</h5>
-  <table class="table table-bordered" id="catalog-table">
-    <tr><th>Title</th><th>Skills</th><th>Hours</th></tr>
-    <tr>
-      <td><input class="form-control" value="Neighborhood First Aid shift"></td>
-      <td><input class="form-control" value="First Aid, Team Leadership"></td>
-      <td><input class="form-control" value="4"></td>
-    </tr>
-    <tr>
-      <td><input class="form-control" value="Park cleanup & awareness"></td>
-      <td><input class="form-control" value="Environmental Care"></td>
-      <td><input class="form-control" value="3"></td>
-    </tr>
-  </table>
-  <button class="btn btn-success mt-2">Submit onboarding</button>
+  <button class="btn btn-success mt-2">DSGA Registry Function</button>
 </form>
 
 <h4>DSGA Log</h4>
@@ -86,9 +77,8 @@ document.addEventListener("DOMContentLoaded", () => {
       name: form.name.value,
       contact_email: form.contact_email.value,
       connector_endpoint: form.connector_endpoint.value,
-      certificate_thumbprint: form.certificate_thumbprint.value,
       privacy_policy_url: form.privacy_policy_url.value,
-      catalog_sample: collectCatalog()
+      {#catalog_sample: collectCatalog()#}
     };
 
     const logBox = document.getElementById("onboard-log");
@@ -106,34 +96,73 @@ document.addEventListener("DOMContentLoaded", () => {
           logBox.innerText += "✔ Approved by DSGA\n\n";
 
           // Show volunteer schema mappings
-          logBox.innerText += "Volunteer Schema Mapping:\n";
-          j.volunteer_schema.forEach(m => {
-            logBox.innerText += `   - ${m}\n`;
-          });
-
-          // Show skill mappings
-          logBox.innerText += "\nSkill Mapping:\n";
-          j.mapped_catalog.forEach(item => {
-            logBox.innerText += `• ${item.title}\n`;
-            item.mapping.forEach(m => {
-              logBox.innerText += `   - ${m.skill} → ${m.esco}\n`;
+            logBox.innerText += "Volunteer Schema Mapping:\n";
+            j.volunteer_schema.forEach(m => {
+              logBox.innerText += `   ${m.local_field} → ${m.mapped_to}  ("${m.sample_value}")\n`;
             });
-          });
 
+            // Show normalized JSON-LD example
+            logBox.innerText += "\nNormalized Volunteer (Volunteer Schema compliant):\n";
+            logBox.innerText += JSON.stringify(j.normalized_example, null, 2) + "\n";
 
-        // Show catalog
+            // Show ESCO-enriched skills in a nicer way
+            if (j.esco_skills && j.esco_skills.length > 0) {
+              logBox.innerText += "\nESCO Skill Mapping:\n";
+              j.esco_skills.forEach(s => {
+                logBox.innerText += `• ${s.label} → ${s.uri}\n`;
+                if (s.description) {
+                  logBox.innerText += `   ${s.description}\n`;
+                }
+              });
+            }
+
+            // Show policy contracts
+            logBox.innerText += "\nPolicy Contracts & Usage Agreements:\n";
+            Object.entries(j.policy_contracts).forEach(([section, terms]) => {
+              logBox.innerText += `  ${section}:\n`;
+              Object.entries(terms).forEach(([k, v]) => {
+                logBox.innerText += `    - ${k}: ${JSON.stringify(v)}\n`;
+              });
+            });
+
+          // Show exposed endpoints
+            logBox.innerText += "\nExposed EDC Endpoints:\n";
+            logBox.innerText += `Catalog: ${j.endpoints.catalog}\n`;
+            j.endpoints.events.forEach(ev => {
+              logBox.innerText += `• ${ev.title} → ${ev.endpoint}\n`;
+            });
+
+            // After skill mappings
+            logBox.innerText += "\nCertificate issued: " + j.certificate_thumbprint + "\n";
+
+            // Show catalog
         const cRes = await fetch(`/api/catalog/${j.organization_id}/`);
         const catalog = await cRes.json();
         const view = document.getElementById("catalog-view");
         view.innerHTML = "";
-        catalog.events.forEach(ev => {
+
+        // Show the full catalog endpoint first
+        const allItem = document.createElement("div");
+        allItem.className = "list-group-item list-group-item-info";
+        allItem.innerHTML = `
+          <em>Full Catalog Endpoint</em><br>
+          <code>${catalog.endpoints.catalog}</code>
+        `;
+        view.appendChild(allItem);
+
+        // Show each event endpoint
+        catalog.endpoints.events.forEach(ev => {
           const item = document.createElement("div");
           item.className = "list-group-item";
-          item.innerHTML = `<strong>${ev["schema:name"]}</strong><br>
-            Skills: ${(ev.skills_needed || []).join(", ")}`;
+          item.innerHTML = `
+            <strong>${ev.title}</strong><br>
+            Endpoint: <code>${ev.endpoint}</code>
+          `;
           view.appendChild(item);
         });
+
         document.getElementById("catalog-section").style.display = "block";
+
       } else {
         logBox.innerText += "✖ Rejected: " + j.reason + "\n";
       }

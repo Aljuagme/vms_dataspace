@@ -1,32 +1,149 @@
 {% extends "vms/base.html" %}
 {% block content %}
+<style>
+  .cert-layout { display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
+  .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+  .rail { position: sticky; top: 88px; align-self: start; }
+
+  .badge-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .badge img { width: 80px; height: 80px; object-fit: contain; }
+  .badge.locked img { filter: grayscale(100%) opacity(0.5); }
+  .badge.unlocked { animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(255,210,122,.6)} 70%{box-shadow:0 0 0 10px rgba(255,210,122,0)} 100%{box-shadow:0 0 0 0 rgba(255,210,122,0)} }
+
+  .activity { padding:10px 12px; border:1px solid #e6eaf2; border-radius:10px; margin-bottom:8px; background:#f9fbfd; }
+  .activity.contributes { border-color:#9fe3bf; background:#f4fff8; }
+  .activity .meta { color:#687086; font-size: 13px; margin-top:4px; }
+
+  .btn { background:#1a73e8; color:#fff; border:none; padding:10px 16px; border-radius:10px; cursor:pointer; font-weight:600; width:100%; }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
+
+  /* Certificate styling */
+  .certificate-view {
+    margin-top:24px; padding:40px; border:6px double #1a263a; border-radius:14px;
+    background:#fefefe; text-align:center; font-family: "Georgia", serif;
+    box-shadow: 0 6px 18px rgba(0,0,0,.12);
+  }
+  .certificate-view h2 { font-size:28px; margin-bottom:6px; letter-spacing:1px; }
+  .certificate-view h3 { font-size:20px; margin:12px 0; color:#1a263a; }
+  .certificate-view .name { font-size:26px; font-weight:700; margin:14px 0; }
+  .certificate-view .skill { font-size:18px; font-style:italic; margin:10px 0; color:#0c5c2d; }
+  .certificate-view .details { font-size:15px; margin:8px 0; color:#444; }
+  .certificate-view .issuer { margin-top:20px; font-size:13px; color:#777; }
+</style>
+
+<div class="cert-layout">
+
+  <!-- MAIN -->
   <div class="card">
-    <h2>Request Certificate — {{ volunteer.name }}</h2>
-    <p>Pick activities from your profile to include in an official certificate (mocked verification).</p>
+    <h2>Certificate — {{ volunteer.name }}</h2>
+    <p class="hint" id="status-text">Keep volunteering to unlock your certificate at 100h!</p>
+
+    <div id="eligibility" style="margin:16px 0;">
+      <h3 style="margin-bottom:8px;">Distribution hours</h3>
+      <div><strong>Total:</strong> <span class="hours" id="total-hours">–</span></div>
+      <div class="hint" id="org-breakdown">
+        <strong>{{ volunteer.organization }}:</strong> <span id="home-hours">–</span><br>
+        <strong>CareConnect Volunteer:</strong> <span id="remote-hours">–</span>
+      </div>
+    </div>
+
+
+    <h3>Your activities</h3>
     <div id="activities"></div>
-    <button id="do-cert" data-vid="{{ volunteer.id }}" class="btn">Request Certificate</button>
+
+    <button id="do-cert" data-vid="{{ volunteer.id }}" class="btn" disabled>Request Certificate</button>
+
     <div id="cert-result"></div>
   </div>
+
+  <!-- BADGE RAIL -->
+  <aside class="rail">
+    <div class="card">
+      <h3 style="margin-top:0;">Badges</h3>
+      <div class="badge-grid" style="margin-top:10px;">
+        <div class="badge locked" id="badge-1"><img src="/static/vms/images/badges/badge0.png" alt="Badge 0"></div>
+        <div class="badge locked" id="badge-2"><img src="/static/vms/images/badges/badge1.png" alt="Badge 1"></div>
+        <div class="badge locked" id="badge-3"><img src="/static/vms/images/badges/badge3.png" alt="Badge 3"></div>
+      </div>
+      <p class="hint" style="margin-top:10px;" id="badge-hint">–</p>
+    </div>
+  </aside>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 (async function(){
   const vid = "{{ volunteer.id }}";
-  const activitiesDiv = document.getElementById("activities");
-  const resultDiv = document.getElementById("cert-result");
-  const res = await fetch(`/api/volunteer/${vid}/dashboard/`);
-  const j = await res.json();
-  const acts = j.activities || [];
-  activitiesDiv.innerHTML = acts.map(a => `<label><input type="checkbox" value="${a.id}" data-provider="${a['provider__name']||''}"/> ${a.title} — ${a.hours}h — ${a['provider__name']||''}</label><br>`).join("");
-  document.getElementById("do-cert").onclick = async ()=>{
-    const checked = Array.from(activitiesDiv.querySelectorAll("input:checked")).map(cb => {
-      return {"id": cb.value, "provider": cb.dataset.provider, "title": cb.parentNode.textContent.trim()}
+  const $activities = document.getElementById("activities");
+  const $btn = document.getElementById("do-cert");
+  const $result = document.getElementById("cert-result");
+  const $total = document.getElementById("total-hours");
+  const $homeH = document.getElementById("home-hours");
+  const $remoteH = document.getElementById("remote-hours");
+  const $status = document.getElementById("status-text");
+  const $badgeHint = document.getElementById("badge-hint");
+
+  const b1 = document.getElementById("badge-1");
+  const b2 = document.getElementById("badge-2");
+  const b3 = document.getElementById("badge-3");
+
+  // context
+  const ctxRes = await fetch(`/api/volunteer/${vid}/certificate/context/`);
+  const ctx = await ctxRes.json();
+
+  $total.textContent = ctx.total_hours + "h";
+  $homeH.textContent = ctx.hours_by_platform.home + "h";
+  $remoteH.textContent = ctx.hours_by_platform.remote + "h";
+
+  // badges
+  if (ctx.total_hours >= 10) b1.classList.remove("locked");
+  if (ctx.total_hours >= 50) b2.classList.remove("locked");
+
+  if (ctx.total_hours >= 100) {
+    b3.classList.remove("locked");
+    b3.classList.add("unlocked");
+    $badgeHint.textContent = "🎉 Eligible for Certificate";
+    $btn.disabled = false;
+    $status.innerHTML = `Congratulations! You’ve reached <strong>100h as a volunteer</strong>.<br>Claim your First Aid certificate.`;
+  } else {
+    $badgeHint.textContent = (100 - ctx.total_hours) + "h to go";
+    $btn.disabled = true;
+  }
+
+  // activities
+  $activities.innerHTML = ctx.activities.map(a => `
+    <div class="activity ${a.contributes ? 'contributes':''}">
+      <div><strong>${a.title}</strong></div>
+      <div class="meta">${a.provider} • ${a.hours}h ${a.skills?.length ? "• " + a.skills.join(", ") : ""}</div>
+    </div>
+  `).join("");
+
+  // request certificate
+  $btn.onclick = async () => {
+    const selected = ctx.activities.filter(a => a.contributes).map(a => ({ id: a.id, provider: a.provider }));
+    const r = await fetch("/api/certificate/request/", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ volunteer_id: vid, items: selected })
     });
-    if(!checked.length){ alert("Select activities"); return; }
-    const r = await fetch("/api/certificate/request/", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({volunteer_id: vid, items: checked})});
     const resj = await r.json();
-    resultDiv.innerHTML = `<pre>${JSON.stringify(resj, null, 2)}</pre>`;
+
+    if (resj.status === "issued") {
+      const cert = resj.certificate;
+      $result.innerHTML = `
+        <div class="certificate-view">
+          <h2>Certificate of Achievement</h2>
+          <h3>This certifies that</h3>
+          <div class="name">{{ volunteer.name }}</div>
+          <div class="details">has successfully completed</div>
+          <div class="hours"><strong>+100 hours</strong> of volunteer service</div>
+          <div class="skill">in First Aid activities</div>
+          <div class="details">across multiple organizations</div>
+          <div class="issuer">Issued by the Volunteer Data Space • ${cert["schema:dateIssued"]}</div>
+        </div>`;
+    }
   };
 })();
 </script>

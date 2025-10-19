@@ -21,18 +21,22 @@
 
   <!-- Welcome + Role -->
   <p class="lead text-muted mb-3">
-    Welcome, {{ volunteer.name }} —
-    {% if volunteer.is_manager %}
-      <span class="badge bg-warning">Manager</span>
-    {% else %}
-      <span class="badge bg-info">Volunteer</span>
-    {% endif %}
+    Welcome, <a href="{% url 'vms:switch_volunteer' volunteer.id %}" class="text-decoration-none">
+    {{ volunteer.name }}
+  </a> —
+    <a href="{% url 'vms:toggle_role' volunteer.id %}" class="text-decoration-none">
+        {% if volunteer.is_manager %}
+          <span class="badge bg-warning">Manager</span>
+        {% else %}
+          <span class="badge bg-info">Volunteer</span>
+        {% endif %}
+    </a>
   </p>
 
   <!-- Join/Leave Data Space -->
     <div class="d-inline-flex align-items-center gap-3">
       <a
-        href="{% url 'vms:onboard' volunteer.id %}"
+        href="{% url 'vms:toggle_dataspace' volunteer.id %}"
         class="btn {% if volunteer.organization.member_ds %}btn-danger{% else %}btn-success{% endif %}"
         style="font-size: x-large">
         {% if volunteer.organization.member_ds %}
@@ -47,8 +51,7 @@
 
 <script>
   function toggleDataSpace() {
-    // Placeholder for API call
-    console.log("Data space toggle clicked");
+    console.log("I am part of the Data space!");
   }
 </script>
 
@@ -62,9 +65,18 @@
       {% for e in events_registered %}
         {% include "vms/partials/event_card.html" with e=e volunteer=volunteer show_details=True %}
       {% empty %}
-        <div class="alert alert-info">No registered events.</div>
+        <div class="alert alert-info">No registered upcoming events.</div>
+      {% endfor %}
+
+      <!-- Finished Events -->
+      <h2 class="mt-5 mb-4">Finished Events</h2>
+      {% for e in events_completed %}
+        {% include "vms/partials/event_card.html" with e=e volunteer=volunteer show_details=True %}
+      {% empty %}
+        <div class="alert alert-secondary">No finished events yet.</div>
       {% endfor %}
     </div>
+
 
     <!-- Sticky Sidebar -->
     <div class="col-lg-4 col-md-5">
@@ -105,11 +117,29 @@
             </div>
             <div class="progress mt-3" style="height: 10px;">
               <div class="progress-bar" role="progressbar"
-                   style="width: 43%;"
-                   aria-valuenow="43"
+                   style="width: {{ progress_percent }}%;"
+                   aria-valuenow="{{ progress_percent }}"
                    aria-valuemin="0" aria-valuemax="100"></div>
             </div>
-            <small class="text-muted">57% to next milestone</small>
+
+            {% if milestone_reached %}
+              <div class="alert alert-success mt-3 text-center fw-bold">
+                🎉 Congratulations! You’ve reached the milestone of Volunteering {{ milestone_target }} hours! 🎉
+              <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+                <script>
+                  confetti({
+                    particleCount: 200,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                  });
+                </script>
+              </div>
+            {% else %}
+              <small class="text-muted">
+                {{ remaining_percent }}% to next milestone ({{ milestone_target }} hours)
+              </small>
+            {% endif %}
+
           </div>
         </div>
 

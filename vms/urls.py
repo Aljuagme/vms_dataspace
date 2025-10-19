@@ -1,28 +1,45 @@
+# vms/urls.py
 from django.urls import path
-from . import views
+
+# Import your separated view modules
+from . import views_ui
+from . import views_edc
 
 app_name = "vms"
 
 urlpatterns = [
-    path("", views.index, name="index"),
-    path("login/", views.login_view, name="login"),
-    path("logout/", views.logout_view, name="logout"),
-    path("dashboard/<int:vid>/", views.dashboard_view, name="dashboard"),
-    path("dashboard/<int:vid>/register/<int:eid>/", views.register_event, name="register_event"),
-    path("dashboard/<int:vid>/unregister/<int:eid>/", views.unregister_event, name="unregister_event"),
-    path("events/<int:vid>/", views.events_page, name="events_page"),
-    path("certificate/<str:vid>/", views.certificate_view, name="certificate"),
-    path("logs/", views.logs_view, name="logs_view"),
+    # ---------------- UI ROUTES ----------------
+    path("", views_ui.index, name="index"),
+    path("login/", views_ui.login_view, name="login"),
+    path("logout/", views_ui.logout_view, name="logout"),
+    path("dashboard/<int:vid>/", views_ui.dashboard_view, name="dashboard"),
+    path("events/<int:vid>/", views_ui.events_page, name="events_page"),
+    path("certificate/<int:vid>/", views_ui.certificate_view, name="certificate"),
+    path("onboard/<int:vid>/", views_ui.onboard_view, name="onboard"),
+    path("logs/", views_ui.logs_view, name="logs_view"),
+    path("events/create/", views_ui.create_event, name="create_event"),
+path("volunteer/<int:vid>/event/<int:eid>/finish/", views_ui.finish_event, name="finish_event"),
+path('ranking/', views_ui.ranking_view, name='ranking'),
 
-    # API endpoints (JSON)
-    path("api/volunteer/register/", views.api_register_volunteer, name="api_register"),
-    path("api/volunteer/<str:vid>/import/", views.api_import_history, name="api_import"),
 
-    path("api/edc/orgs/", views.api_orgs, name="api_orgs"),
-    path("api/get_logs/", views.api_get_logs, name="api_logs"),
-    path("api/onboard_organization/", views.api_onboard_organization, name="api_onboard_organization"),
-    path("api/catalog/<int:org_id>/", views.api_catalog, name="api_catalog"),
-    path("onboard/<int:vid>/", views.onboard_view, name="onboard"),
+    # Volunteer actions
+    path("api/register-volunteer/", views_ui.api_register_volunteer, name="api_register_volunteer"),
+    path("api/import-history/<int:vid>/", views_ui.api_import_history, name="api_import_history"),
+    path("register/<int:vid>/<int:eid>/", views_ui.register_event, name="register_event"),
+    path("unregister/<int:vid>/<int:eid>/", views_ui.unregister_event, name="unregister_event"),
+    path("api/orgs/", views_ui.api_orgs, name="api_orgs"),
+    path("toggle-role/<int:volunteer_id>/", views_ui.toggle_role, name="toggle_role"),
+    path("switch-volunteer/<int:volunteer_id>/", views_ui.switch_volunteer, name="switch_volunteer"),
+    path("api/volunteer/<int:vid>/certificate/context/", views_ui.api_certificate_context, name="api_certificate_context"),
+    path("api/certificate/request/", views_ui.api_certificate_request, name="api_certificate_request"),
 
+
+
+    # ---------------- EDC / CONNECTOR ROUTES ----------------
+    path("api/onboard-organization/", views_edc.api_onboard_organization, name="api_onboard_organization"),
+    path("api/logs/", views_edc.api_get_logs, name="api_get_logs"),
+    path("api/catalog/<int:org_id>/", views_edc.api_catalog, name="api_catalog"),
+    path("api/catalog/<int:org_id>/events/<int:event_id>/", views_edc.api_event_detail, name="api_event_detail"),
+    path("volunteer/<int:volunteer_id>/toggle-dataspace/", views_edc.toggle_dataspace, name="toggle_dataspace"),
 
 ]

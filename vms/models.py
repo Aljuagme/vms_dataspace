@@ -40,20 +40,21 @@ class Organization(models.Model):
 
     # --- add local vocabularies ---
     local_volunteer_schema = {
-        "firstName": "schema:givenName",
-        "lastName": "schema:familyName",
-        "homeTown": "schema:location",
-        "availability": "vms:availability",
-        "skills": "schema:skills",
-        "emailAddress": "schema:email",
+        "name": ["schema:givenName", "schema:familyName"],
+        "email_address": ["schema:email"],
+        "hours_served": ["vms:totalHours"],
+        "skills_list": ["schema:skills"],
+        "org_membership": ["schema:memberOf"],
+        "tshirt_size": ["(no mapping: dropped or additionalProperty)"],
+        "birthDate": ["schema:birthDate"],
     }
 
     local_skill_mapping = {
-        "CPR": "ESCO:skill:cpr-0001",
-        "Emergency Response": "ESCO:skill:disaster-0033",
-        "First Aid": "ESCO:skill:0001",
-        "Team Leadership": "ESCO:skill:0022",
-        "Environmental Care": "ESCO:skill:0044",
+        "CPR": "http://data.europa.eu/esco/skill/cpr-0001",
+        "Emergency Response": "http://data.europa.eu/esco/skill/disaster-0033",
+        "First Aid": "http://data.europa.eu/esco/skill/f7464f30-662b-4177-85a0-3df9693e9e58",
+        "Team Leadership": "http://data.europa.eu/esco/skill/0022-team-leadership",
+        "Environmental Care": "http://data.europa.eu/esco/skill/0044-environmental-care",
     }
 
     def __str__(self):
@@ -112,6 +113,8 @@ class Volunteer(models.Model):
     name = models.CharField(max_length=250)
     password = models.CharField(max_length=128, default="admin")
     location = models.CharField(max_length=200, blank=True, default="")
+    availability_preference = models.TextField(blank=True, default="")
+    available_hours_per_week = models.IntegerField(blank=True, default=0)
 
     is_manager = models.BooleanField(default=False)
     organization = models.ForeignKey(
@@ -137,9 +140,9 @@ class Volunteer(models.Model):
 
     def to_jsonld(self):
         """
-        Emit a JSON-LD document following the vms:Volunteer idea in the thesis.
+        Emit a JSON-LD document following the vms:Volunteer.
         Uses schema:Person base, includes vms:totalHours and ESCO skills as @id links.
-        See Listings 5.1/5.2 in thesis. :contentReference[oaicite:4]{index=4}
+        See Listings 5.1/5.2 in thesis.}
         """
         ctx = {
             "@context": {
@@ -155,6 +158,7 @@ class Volunteer(models.Model):
             "@id": f"https://vms.example.org/volunteers/{self.id}",
             "schema:name": self.name,
             "schema:location": self.location,
+            "schema:memberOf": self.organization,
             "vms:totalHours": {
                 "@type": "schema:QuantitativeValue",
                 "schema:value": self.total_hours(),
@@ -162,8 +166,7 @@ class Volunteer(models.Model):
             },
             "schema:skills": skills_jsonld,
         }
-        if self.organization:
-            profile["vms:organization"] = {"@id": f"https://vms.example.org/orgs/{self.organization.id}"}
+
 
         return profile
 
@@ -182,7 +185,15 @@ class VolunteerEvent(models.Model):
         "Organization", related_name="events",
         on_delete=models.CASCADE, null=True, blank=True
     )
+    isShared = models.BooleanField(default=True)
     isFinished = models.BooleanField(default=False)
+
+    # NEW — dataspace metadata (for logs/UI/showcase)
+    prioritize_local = models.BooleanField(default=False)
+    shared_since = models.DateTimeField(null=True, blank=True)
+    ds_endpoint = models.CharField(blank=True, default="")
+    ds_asset_id = models.CharField(max_length=64, blank=True, default="")
+    ds_contract_id = models.CharField(max_length=64, blank=True, default="")
 
     image = models.CharField(max_length=250, blank=True)
 
@@ -245,8 +256,13 @@ class Certificate(models.Model):
     def __str__(self):
         return f"Cert {self.id} for {self.volunteer.name}"
 
+    # in models.py -> Certificate.to_jsonld (keep your existing, this is additive)
     def to_jsonld(self):
         doc = {
+            "@context": {
+                "schema": "https://schema.org/",
+                "vms": "https://vms.example.org/context#"
+            },
             "@type": "schema:EducationalOccupationalCredential",
             "@id": f"https://vms.example.org/certs/{self.id}",
             "schema:name": f"Volunteer Certificate {self.id}",
@@ -255,13 +271,12 @@ class Certificate(models.Model):
             "vms:items": self.items,
             "vms:proofHash": self.proof_hash,
         }
-
         if self.issuer:
-            doc["schema:recognizedBy"] = {"@id": f"https://vms.example.org/orgs/{self.issuer.id}"}
-        # include structured skills/tasks if present
-        skills = [{"@id": s.esco_uri or s.uri()} for s in self.skills.all()]
+            doc["schema:recognizedBy"] = {"@id": f"https://vms.example.org/orgs/{self.issuer.id}",
+                                          "schema:name": self.issuer.name}
+        skills = [{"@id": s.esco_uri or s.uri(), "schema:name": s.label} for s in self.skills.all()]
         if skills:
-            doc["vms:skills"] = skills
+            doc["schema:skills"] = skills
         return doc
 
 

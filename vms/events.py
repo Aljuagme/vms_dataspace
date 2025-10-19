@@ -24,6 +24,8 @@ def annotate_event(event, volunteer, registered_ids):
     event.skill_status = skill_status
     event.missing_skills = missing_skills
     event.can_register = len(missing_skills) == 0
+    event.is_federated = (volunteer.organization and event.organization != volunteer.organization)
+
     return event
 
 

@@ -384,3 +384,42 @@ body {
 .icon-eye:before {
   content: "visibility";
 }
+
+/* Default Theme (for everyone else) */
+body.theme-default {
+  background-color: #f8f9fa;
+  color: #212529;
+}
+
+body.theme-default .header {
+  background: #0d6efd; /* Bootstrap primary */
+  color: #fff;
+}
+
+/* Andrea's Theme */
+body.theme-andrea {
+  background-color: gray; /* Dark background */
+  color: #f0f0f0;
+}
+
+body.theme-andrea .header {
+  background: green; /* Pink accent */
+  color: #fff;
+}
+
+body.theme-andrea a {
+  color: blue;
+}
+body.theme-andrea .card {
+  background: navajowhite;
+  border-color: #444;
+}
+body.theme-andrea .btn {
+  border-radius: 50px;
+}
+
+.highlight-volunteer {
+    font-weight: bold;
+    background-color: #d4edda !important;
+    color: #155724;
+}

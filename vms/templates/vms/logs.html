@@ -1,17 +1,16 @@
 {% extends "vms/base.html" %}
 {% block content %}
   <div class="card">
-    <h2>System Logs (live)</h2>
+    <h2>Auditor</h2>
     <p>These logs show the simulated DSGA onboarding operations and other events.</p>
-    <div id="log-panel" style="max-height:400px; overflow:auto; background:#fff; padding:8px; border:1px solid #eee;"></div>
-    <button id="clear-logs" class="btn" style="margin-top:8px;">Clear display (does not delete DB)</button>
+    <div id="log-panel" style="max-height:100%; overflow:auto; background:#fff; padding:8px; border:1px solid #eee;"></div>
   </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 async function fetchLogs(){
-  const res = await fetch("/vms/api/logs/?limit=100");
+  const res = await fetch("{% url 'vms:api_get_logs' %}");
   const j = await res.json();
   const panel = document.getElementById("log-panel");
   panel.innerHTML = j.entries.map(e => `<div style="border-bottom:1px solid #f2f2f2;padding:6px">
@@ -19,8 +18,8 @@ async function fetchLogs(){
     <pre style="white-space:pre-wrap">${e.details}</pre>
   </div>`).join("");
 }
-document.getElementById("clear-logs").addEventListener("click", ()=>document.getElementById("log-panel").innerHTML="");
-fetchLogs();
-setInterval(fetchLogs, 2000); // poll every 2s
+
+// fetch once when page loads
+document.addEventListener("DOMContentLoaded", fetchLogs);
 </script>
 {% endblock %}

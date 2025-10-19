@@ -2,11 +2,35 @@
 {% block content %}
   <div class="card">
     <h2>Welcome</h2>
-    <p>This prototype demonstrates a Volunteer Management Data Space concept. Use the links to create a volunteer, import history, request certificates, and discover tasks across federated catalogs (simulated).</p>
+    <p>
+        This <strong>prototype</strong> illustrates the <strong>Volunteer Management Data Space</strong> concept developed in the master's thesis.
+        To keep the prototype focused and practical, several <strong>simplifications</strong> have been made:
+    </p>
+
     <ul>
-      <li><a href="{% url 'vms:login' %}">Create volunteer &amp; import history (Scenario 1)</a></li>
-      <li>After signup, you'll be redirected to the dashboard to view consolidated hours and request certificates (Scenario 2)</li>
-      <li><a href="{% url 'vms:events_page' request.session.volunteer_id %}">Task discovery &amp; publish (Scenario 3)</a></li>
+      <li>
+        The data model uses <strong>Person → Volunteer</strong> from <em>Schema.org</em>,
+        instead of <em>Thing → Intangible → Role → VolunteerRole</em> hierarchy described in the thesis.
+      </li>
+      <li>
+        A single demo organization is used. The application form only asks for:
+        <strong>Name</strong>, <strong>Password</strong>, <strong>Location</strong>, and <strong>Skills</strong>.
+      </li>
+      <li>
+          The <strong>Eclipse Data Connector (EDC)</strong> is simulated through a set of <strong>simplified API endpoints</strong>,
+        rather than a full distributed data exchange setup as discussed in the thesis.
+      </li>
+      <li>
+          <strong>Only</strong> the <strong>Volunteer</strong> data is treated as <strong>non-standardized</strong>,
+        while Volunteer Events and Certificates are assumed to follow common standards.
+      </li>
+    </ul>
+
+    <p>Explore the three main prototype scenarios:</p>
+    <ul>
+      <li><a href="{% url 'vms:dashboard' request.session.volunteer_id %}">Scenario 1: Onboard an Organization into the Data Space</a></li>
+      <li><a href="{% url 'vms:events_page' request.session.volunteer_id %}">Scenario 2: Advertise Events Across Platforms</a></li>
+      <li><a href="{% url 'vms:certificate' request.session.volunteer_id %}">Scenario 3: Request a Volunteer Certificate</a></li>
     </ul>
   </div>
 {% endblock %}
