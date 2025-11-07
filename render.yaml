@@ -2,10 +2,10 @@ services:
   - type: web
     name: vms-ds
     env: python
+    region: oregon
     buildCommand: |
       pip install --upgrade pip
       pip install -r requirements.txt
       python manage.py collectstatic --noinput
-    startCommand: |
-      /opt/render/project/src/.venv/bin/gunicorn vms_ds.wsgi:application
+    startCommand: gunicorn vms_ds.wsgi:application
     autoDeploy: true
