@@ -7,8 +7,8 @@ services:
     python:
       version: 3.10.13
     buildCommand: |
-      pip install --upgrade pip
-      pip install -r requirements.txt
+      pip install --upgrade pip;
+      pip install -r requirements.txt;
       python manage.py collectstatic --noinput
     startCommand: gunicorn vms_ds.wsgi:application
     autoDeploy: true
