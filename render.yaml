@@ -3,6 +3,9 @@ services:
     name: vms-ds
     env: python
     region: oregon
+    plan: free
+    python:
+      version: 3.10.13
     buildCommand: |
       pip install --upgrade pip
       pip install -r requirements.txt
