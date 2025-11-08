@@ -37,7 +37,7 @@ def login_view(request):
             name = form.cleaned_data["name"].capitalize()
             password = form.cleaned_data["password"]
             try:
-                v = Volunteer.objects.get(name=name, password=password)
+                v = Volunteer.objects.get(name=name)
                 request.session["volunteer_id"] = v.id
                 return redirect("vms:dashboard", vid=v.id)
             except Volunteer.DoesNotExist:
