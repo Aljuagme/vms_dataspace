@@ -105,11 +105,11 @@
     "fields": {
         "name": "Mima",
         "url": "http://www.example.org",
-        "member_ds": true,
+        "member_ds": false,
         "is_dsga": false,
         "contact_email": "mima@gmail.org",
         "connector_endpoint": "https://connector.mima.edc/",
-        "certificate_thumbprint": "218C68568D78B3F3A9C8696EA616441B",
+        "certificate_thumbprint": "",
         "metadata_json": {
             "name": "Mima",
             "contact_email": "mima@gmail.org",
@@ -212,9 +212,7 @@
             2
         ],
         "events": [
-            3,
-            20,
-            22
+            3
         ]
     }
 },
@@ -353,7 +351,7 @@
         "location": "Linz",
         "organization": 3,
         "isShared": true,
-        "isFinished": true,
+        "isFinished": false,
         "prioritize_local": false,
         "shared_since": "2025-10-18T18:00:38Z",
         "ds_endpoint": "/api/catalog/3/events/22/",
@@ -2874,6 +2872,76 @@
         "level": "INFO",
         "action": "EDC.CredentialDelivered",
         "details": "Certificate 41 delivered to Mima (holder)"
+    }
+},
+{
+    "model": "vms.logentry",
+    "pk": 1395,
+    "fields": {
+        "timestamp": "2025-11-17T12:46:57.774Z",
+        "level": "INFO",
+        "action": "Participation.Cancelled",
+        "details": "{\n  \"from\": \"Mima\",\n  \"to\": \"Better Impact\",\n  \"volunteer_subset\": {\n    \"VolunteerID\": \"1\",\n    \"Name\": \"Alvaro\"\n  },\n  \"note\": \"Only minimal subset used; full profile remains at PlatformA\"\n}"
+    }
+},
+{
+    "model": "vms.logentry",
+    "pk": 1396,
+    "fields": {
+        "timestamp": "2025-11-17T12:46:57.777Z",
+        "level": "INFO",
+        "action": "Participation.RecordUpdated",
+        "details": "{\n  \"system\": \"Mima\",\n  \"record\": {\n    \"VolunteerID\": 1,\n    \"EventID\": 20,\n    \"EventName\": \"Big Tree Planting Initiative\",\n    \"status\": \"cancelled\"\n  }\n}"
+    }
+},
+{
+    "model": "vms.logentry",
+    "pk": 1397,
+    "fields": {
+        "timestamp": "2025-11-17T12:46:57.779Z",
+        "level": "INFO",
+        "action": "Participation.RecordUpdated",
+        "details": "{\n  \"system\": \"Better Impact\",\n  \"record\": {\n    \"EventID\": 20,\n    \"ParticipantID\": 1,\n    \"status\": \"cancelled\"\n  }\n}"
+    }
+},
+{
+    "model": "vms.logentry",
+    "pk": 1398,
+    "fields": {
+        "timestamp": "2025-11-17T12:47:36.440Z",
+        "level": "INFO",
+        "action": "Participation.Cancelled",
+        "details": "{\n  \"from\": \"Mima\",\n  \"to\": \"Volunteering Solutions\",\n  \"volunteer_subset\": {\n    \"VolunteerID\": \"1\",\n    \"Name\": \"Alvaro\"\n  },\n  \"note\": \"Only minimal subset used; full profile remains at PlatformA\"\n}"
+    }
+},
+{
+    "model": "vms.logentry",
+    "pk": 1399,
+    "fields": {
+        "timestamp": "2025-11-17T12:47:36.442Z",
+        "level": "INFO",
+        "action": "Participation.RecordUpdated",
+        "details": "{\n  \"system\": \"Mima\",\n  \"record\": {\n    \"VolunteerID\": 1,\n    \"EventID\": 22,\n    \"EventName\": \"Event First Aid Support Crew\",\n    \"status\": \"cancelled\"\n  }\n}"
+    }
+},
+{
+    "model": "vms.logentry",
+    "pk": 1400,
+    "fields": {
+        "timestamp": "2025-11-17T12:47:36.445Z",
+        "level": "INFO",
+        "action": "Participation.RecordUpdated",
+        "details": "{\n  \"system\": \"Volunteering Solutions\",\n  \"record\": {\n    \"EventID\": 22,\n    \"ParticipantID\": 1,\n    \"status\": \"cancelled\"\n  }\n}"
+    }
+},
+{
+    "model": "vms.logentry",
+    "pk": 1401,
+    "fields": {
+        "timestamp": "2025-11-17T12:47:40.564Z",
+        "level": "INFO",
+        "action": "DataSpaceLeft",
+        "details": "Mima left the Data Space"
     }
 },
 {
@@ -28266,6 +28334,24 @@
     "pk": 1381,
     "fields": {
         "action_time": "2025-11-17T10:41:18.817Z",
+        "user": [
+            "tatooine"
+        ],
+        "content_type": [
+            "vms",
+            "volunteerevent"
+        ],
+        "object_id": "22",
+        "object_repr": "Event First Aid Support Crew",
+        "action_flag": 2,
+        "change_message": "[{\"changed\": {\"fields\": [\"IsFinished\"]}}]"
+    }
+},
+{
+    "model": "admin.logentry",
+    "pk": 1382,
+    "fields": {
+        "action_time": "2025-11-17T12:47:29.416Z",
         "user": [
             "tatooine"
         ],
