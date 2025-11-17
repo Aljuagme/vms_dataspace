@@ -1,18 +1,24 @@
 {% load static %}
-<div class="card mb-4 shadow-sm" id="event-{{ e.id }}">
+
+<div class="card mb-4 shadow-sm {{ provider_tint }}" id="event-{{ e.id }}">
   <div class="row g-0">
     <div class="col-md-4">
       <img src="{% static e.image_url %}" class="img-fluid rounded-start h-100 object-fit-cover" alt="{{ e.name }}">
     </div>
+
     <div class="col-md-8">
       <div class="card-body">
+
+        <!-- Event title with label -->
         <h3 class="card-title h5 d-flex align-items-center gap-2">
-          {{ e.name }}
+          <span class="text-muted">Title:</span> {{ e.name }}
+
           {% if e.isShared %}
             <span class="badge bg-primary">Data Space</span>
           {% else %}
             <span class="badge bg-secondary">Local Only</span>
           {% endif %}
+
           {% if e.isFinished %}
             <span class="badge bg-dark">Finished</span>
           {% endif %}
@@ -24,19 +30,33 @@
           </small></p>
         {% endif %}
 
-        <p class="fw-light">Provided by: <strong>{{ e.organization.name }}</strong></p>
-        <p class="text-muted">{{ e.description }}</p>
+        <!-- Organization -->
+        <p class="fw-light">
+            <strong>Organization:</strong> {{ e.organization.name }}
+        </p>
+
+        <!-- Description -->
+        <p class="text-muted">
+            <strong>Description:</strong> {{ e.description }}
+        </p>
 
         {% if show_details %}
           <div class="row mt-3">
+
+            <!-- Left column: duration + location -->
             <div class="col-sm-4">
-              <p><i class="bi bi-clock me-2"></i>{{ e.duration_hours }}h</p>
-              <p><i class="bi bi-geo-alt me-2"></i>{{ e.location }}</p>
+              <p><i class="bi bi-clock me-2"></i><strong>Time:</strong> {{ e.duration_hours }}h</p>
+              <p><i class="bi bi-geo-alt me-2"></i><strong>Location:</strong> {{ e.location }}</p>
             </div>
+
+            <!-- Right column: registered + skills -->
             <div class="col-sm-8">
-              <p><i class="bi bi-people me-2"></i>{{ e.registered_volunteers }} volunteers</p>
+              <p><i class="bi bi-people me-2"></i>
+                <strong>Registered:</strong> {{ e.registered_volunteers }} volunteers
+              </p>
+
               <p>
-                <i class="bi bi-tags me-2"></i>
+                <i class="bi bi-tags me-2"></i><strong>Skills:</strong>
                 {% if e.skill_status %}
                   {% for skill, status in e.skill_status.items %}
                     {% if status == "has" %}
@@ -53,23 +73,29 @@
           </div>
         {% endif %}
 
+        <!-- Action buttons -->
         <div class="d-flex gap-2">
+
           <form method="post"
                 action="{% if e.is_registered %}{% url 'vms:unregister_event' volunteer.id e.id %}{% else %}{% url 'vms:register_event' volunteer.id e.id %}{% endif %}">
             {% csrf_token %}
+
             {% if e.is_registered %}
               <button class="btn btn-danger btn-sm" {% if e.isFinished %}disabled{% endif %}>
                 <i class="bi bi-x-circle me-1"></i> Unregister
               </button>
+
             {% else %}
               {% if e.can_register and not e.isFinished %}
                 <button class="btn btn-primary btn-sm">
                   <i class="bi bi-plus-circle me-1"></i> Register
                 </button>
+
               {% else %}
                 <button class="btn btn-secondary btn-sm" disabled>
                   <i class="bi bi-lock me-1"></i> Cannot Register
                 </button>
+
                 {% if e.isFinished %}
                   <small class="text-danger d-block mt-1">Event is finished</small>
                 {% else %}
@@ -79,7 +105,8 @@
             {% endif %}
           </form>
 
-          {% if volunteer.is_manager and not e.isFinished %}
+{#          {% if volunteer.is_manager and not e.isFinished %}#}
+        {% if volunteer and not e.isFinished %}
             <form method="post" action="{% url 'vms:finish_event' volunteer.id e.id %}">
               {% csrf_token %}
               <button class="btn btn-outline-secondary btn-sm">

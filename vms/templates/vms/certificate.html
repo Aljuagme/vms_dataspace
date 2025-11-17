@@ -44,7 +44,7 @@
       <div><strong>Total:</strong> <span class="hours" id="total-hours">–</span></div>
       <div class="hint" id="org-breakdown">
         <strong>{{ volunteer.organization }}:</strong> <span id="home-hours">–</span><br>
-        <strong>CareConnect Volunteer:</strong> <span id="remote-hours">–</span>
+        <strong>Volunteering Solutions:</strong> <span id="remote-hours">–</span>
       </div>
     </div>
 
@@ -56,6 +56,8 @@
 
     <div id="cert-result"></div>
   </div>
+
+
 
   <!-- BADGE RAIL -->
   <aside class="rail">
@@ -69,6 +71,76 @@
       <p class="hint" style="margin-top:10px;" id="badge-hint">–</p>
     </div>
   </aside>
+<div id="cert-log-container" class="card" style="margin-top:32px; display:none;">
+  <h3 style="margin-top:0;">Behind the Scenes — Data Space Logs</h3>
+  <div id="cert-logs"></div>
+</div>
+
+<style>
+  .cert-log-entry {
+      background:#fafbff;
+      border-left:4px solid #1a6ae3;
+      padding:12px 16px;
+      margin-bottom:10px;
+      border-radius:6px;
+      font-family: "JetBrains Mono", monospace;
+      white-space: pre-wrap;
+  }
+  .cert-log-entry .type {
+      font-weight:700;
+      color:#1a4ea8;
+  }
+  .cert-log-entry .timestamp {
+      color:#777;
+      font-size:12px;
+      margin-top:6px;
+  }
+</style>
+
+
+<style>
+  .cert-log-entry {
+      background:#fafbff;
+      border-left:4px solid #1a6ae3;
+      padding:12px 16px;
+      margin-bottom:10px;
+      border-radius:6px;
+      font-family: "JetBrains Mono", monospace;
+      white-space: pre-wrap;
+  }
+  .cert-log-entry .type {
+      font-weight:700;
+      color:#1a4ea8;
+  }
+  .cert-log-entry .timestamp {
+      color:#777;
+      font-size:12px;
+      margin-top:6px;
+  }
+</style>
+
+<script>
+// Fetch certificate-related logs
+(async function() {
+  const box = document.getElementById("cert-logs");
+  const res = await fetch("/api/certificate/logs/{{ volunteer.id }}/");
+  const data = await res.json();
+
+  if (!data.logs.length) {
+      box.innerHTML = "<p class='text-muted'>No certificate logs yet.</p>";
+      return;
+  }
+
+  box.innerHTML = data.logs.map(log => `
+      <div class="cert-log-entry">
+          <div class="type">${log.type}</div>
+          <div>${log.message}</div>
+          <div class="timestamp">${log.timestamp}</div>
+      </div>
+  `).join("");
+})();
+</script>
+
 </div>
 {% endblock %}
 
@@ -147,4 +219,6 @@
   };
 })();
 </script>
+
+
 {% endblock %}

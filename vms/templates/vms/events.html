@@ -1,20 +1,259 @@
 {% extends "vms/base.html" %}
 {% load static %}
+
 {% block content %}
-<div class="container text-center">
-  <h2 class="mb-4">All Upcoming Events</h2>
-  <div class="row justify-content-center">
-    <div class="col-lg-8">
-      {% for e in events %}
-          {% include "vms/partials/event_card.html" with e=e volunteer=volunteer show_details=True %}
-        {% empty %}
-          <div class="alert alert-info">No more events.</div>
-        {% endfor %}
+<style>
+    .col-title {
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+        font-size: 0.85rem;
+        letter-spacing: 1px;
+        color: #666;
+    }
+
+        .btn-danger {
+        background-color: #dc3545 !important;
+        border-color: #dc3545 !important;
+        color: white !important;
+    }
+
+    .local-col {
+        background: #f6f8ff;
+        border-right: 2px solid #d0d7ff;
+        padding: 15px;
+        min-height: 70vh;
+        overflow-y: auto;
+    }
+
+    .external-col {
+        background: #f7fff6;
+        padding: 15px;
+        min-height: 70vh;
+        overflow-y: auto;
+    }
+
+    /* External provider cards */
+    .external-card-betterimpact {
+        background: #fff8e6;
+        border-left: 5px solid #ffb100;
+        padding: 10px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+
+    .external-card-volunteersolutions {
+        background: #e6f8ff;
+        border-left: 5px solid #0095ff;
+        padding: 10px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+
+    /* Tint styles applied to Mima cards */
+    .mima-card-betterimpact {
+        background-color: #fff7dd !important;
+        border-left: 4px solid #ffb100 !important;
+    }
+
+    .mima-card-volunteersolutions {
+        background-color: #e6f5ff !important;
+        border-left: 4px solid #0095ff !important;
+    }
+
+    .badge-provider {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+    }
+
+    #ontology-section {
+        background: #ffffff;
+        border-top: 3px solid #ddd;
+        margin-top: 40px;
+        padding: 25px;
+    }
+
+    .mapping-table td {
+        vertical-align: top;
+        padding: 6px 10px;
+        font-size: 0.9rem;
+        border-bottom: 1px solid #eee;
+    }
+
+    .jsonld-view {
+        background: #ffffff;
+        border: 1px solid #ddd;
+        padding: 12px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        white-space: pre-wrap;
+        color: #003366;
+    }
+
+    .highlight-red {
+        color: #b80000;
+        font-weight: bold;
+    }
+</style>
+
+<div class="container-fluid">
+
+    <h2 class="mb-4 text-center">Federated Volunteer Events</h2>
+    <div class="row">
+
+        <!-- LEFT COLUMN: Mima unified dashboard -->
+        <div class="col-lg-8 col-md-7 local-col">
+            <div class="col-title">Mima Dashboard</div>
+
+            {% for e in events %}
+
+                {% comment %} Determine tint for unified view {% endcomment %}
+                {% if e.organization.name == "Better Impact" %}
+                    {% with provider_tint="mima-card-betterimpact" %}
+                        {% include "vms/partials/event_card.html" with e=e volunteer=volunteer show_details=True provider_tint=provider_tint %}
+                    {% endwith %}
+
+                {% elif e.organization.name == "Volunteering Solutions" %}
+                    {% with provider_tint="mima-card-volunteersolutions" %}
+                        {% include "vms/partials/event_card.html" with e=e volunteer=volunteer show_details=True provider_tint=provider_tint %}
+                    {% endwith %}
+
+                {% else %}
+                    {% with provider_tint="" %}
+                        {% include "vms/partials/event_card.html" with e=e volunteer=volunteer show_details=True provider_tint=provider_tint %}
+                    {% endwith %}
+                {% endif %}
+
+            {% empty %}
+                <div class="alert alert-info">No events available.</div>
+            {% endfor %}
+        </div>
+
+        <!-- RIGHT COLUMN: Native external formats -->
+        <div class="col-lg-4 col-md-5 external-col">
+            <div class="col-title">Original External Formats</div>
+
+            {% for e in events %}
+
+                {% if e.organization.name == "Better Impact" %}
+                    <div class="external-card-betterimpact">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <h5 class="mb-0">{{ e.name }}</h5>
+                            <span class="badge bg-warning text-dark badge-provider">Better Impact</span>
+                        </div>
+
+                        <div><strong>task_title:</strong> {{ e.name }}</div>
+                        <div><strong>task_overview:</strong> {{ e.description }}</div>
+                        <div><strong>area:</strong> {{ e.location }}</div>
+                        <div><strong>task_time:</strong> {{ e.duration_hours }} hours</div>
+
+                        <div class="mt-1"><strong>competencies:</strong>
+                            {% for s in e.skills.all %}
+                                <span class="badge bg-warning text-dark">{{ s.label }}</span>
+                            {% endfor %}
+                        </div>
+
+                    </div>
+                {% endif %}
+
+                {% if e.organization.name == "Volunteering Solutions" %}
+                    <div class="external-card-volunteersolutions">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <h5 class="mb-0">{{ e.name }}</h5>
+                            <span class="badge bg-info text-dark badge-provider">Volunteering Solutions</span>
+                        </div>
+
+                        <div><strong>projectName:</strong> {{ e.name }}</div>
+                        <div><strong>details:</strong> {{ e.description }}</div>
+                        <div><strong>place:</strong> {{ e.location }}</div>
+                        <div><strong>hoursNeeded:</strong> {{ e.duration_hours }} hours</div>
+
+                        <div><strong>requiredSkills:</strong>
+                            {% for s in e.skills.all %}
+                                <span class="badge bg-info text-dark">{{ s.label }}</span>
+                            {% endfor %}
+                        </div>
+
+                        <div class="mt-2">
+                            <strong class="highlight-red">tshirtSize:</strong>
+                            <span class="highlight-red">S / M / L</span>
+                            <span class="text-muted small">(provider-specific)</span>
+                        </div>
+
+                    </div>
+                {% endif %}
+
+            {% endfor %}
+        </div>
+
+    </div> <!-- end row -->
+
+    <!-- ONTOLOGY SECTION -->
+    <div id="ontology-section">
+        <h3 class="mb-3">How the Data Space Standardizes Different Event Schemas</h3>
+
+<table class="mapping-table table">
+    <thead class="table-light">
+        <tr>
+            <th width="25%">Mima (Local Fields)</th>
+            <th width="25%">Data Space (Standard)</th>
+            <th width="25%">Better Impact</th>
+            <th width="25%">Volunteering Solutions</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        <tr>
+            <td>title</td>
+            <td>schema:name</td>
+            <td>task_title</td>
+            <td>projectName</td>
+
+        <tr>
+            <td>description</td>
+            <td>schema:description</td>
+            <td>task_overview</td>
+            <td>details</td>
+        </tr>
+
+        <tr>
+            <td>location</td>
+            <td>schema:location</td>
+            <td>area</td>
+            <td>place</td>
+        </tr>
+
+        <tr>
+            <td>time</td>
+            <td>schema:duration (ISO 8601)</td>
+            <td>task_time</td>
+            <td>hoursNeeded</td>
+        </tr>
+
+        <tr>
+            <td>skills</td>
+            <td>esco:Skill</td>
+            <td>competencies</td>
+            <td>requiredSkills</td>
+        </tr>
+
+        <tr>
+            <td>Organization</td>
+            <td>schema:provider</td>
+            <td>provider</td>
+            <td>organisation</td>
+        </tr>
+
+        <tr>
+            <td><code><em>Not present</em></code></td>
+            <td><code><em>Not mapped</em></code></td>
+            <td><code><em>Not present</em></code></td>
+            <td>tshirtSize</td>
+        </tr>
+    </tbody>
+</table>
+
+
     </div>
-  </div>
 </div>
-      <!-- Bootstrap & Icons -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 {% endblock %}

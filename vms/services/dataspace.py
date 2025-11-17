@@ -229,7 +229,7 @@ def log_volunteer_join(volunteer, event: VolunteerEvent, from_org: Organization,
         "contract_offer": contract_id
     }))
 
-    # ✅ Step 3. Contract negotiation and agreement
+    # Step 3. Contract negotiation and agreement
     log_event("EDC.ContractNegotiated", _pretty({
         "between": [from_org.name, to_org.name],
         "contract_id": contract_id,

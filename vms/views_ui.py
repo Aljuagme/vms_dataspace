@@ -269,11 +269,11 @@ def create_event(request):
 @require_POST
 def finish_event(request, vid, eid):
     volunteer = get_object_or_404(Volunteer, pk=vid)
-    if not volunteer.is_manager:
-        messages.error(request, "Only managers can finish events.")
-        return redirect("vms:dashboard", vid=vid)
+    # if not volunteer.is_manager:
+    #     messages.error(request, "Only managers can finish events.")
+    #     return redirect("vms:dashboard", vid=vid)
 
-    event = get_object_or_404(VolunteerEvent, pk=eid, organization=volunteer.organization)
+    event = get_object_or_404(VolunteerEvent, pk=eid)
     event.isFinished = True
     event.save()
 
@@ -568,3 +568,4 @@ def api_certificate_request(request):
         "certificate": cert_jsonld,
         "contract_id": contract_id
     })
+

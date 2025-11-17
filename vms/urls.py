@@ -35,6 +35,7 @@ path('ranking/', views_ui.ranking_view, name='ranking'),
 
 
 
+
     # ---------------- EDC / CONNECTOR ROUTES ----------------
     path("api/onboard-organization/", views_edc.api_onboard_organization, name="api_onboard_organization"),
     path("api/logs/", views_edc.api_get_logs, name="api_get_logs"),

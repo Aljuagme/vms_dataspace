@@ -423,3 +423,20 @@ body.theme-andrea .btn {
     background-color: #d4edda !important;
     color: #155724;
 }
+
+.jsonld-box {
+    background: white !important;
+    color: black !important;
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 0.85rem;
+    white-space: pre-wrap;      /* allow expansion */
+    overflow: visible !important; /* no scrolling */
+}
+
+.jsonld-key {
+    color: #0066cc;  /* blue keys */
+    font-weight: 600;
+}
+
