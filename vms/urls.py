@@ -1,5 +1,6 @@
 # vms/urls.py
 from django.urls import path
+from django.views.generic import RedirectView
 
 # Import your separated view modules
 from . import views_ui
@@ -8,8 +9,8 @@ from . import views_edc
 app_name = "vms"
 
 urlpatterns = [
+    path("", views_ui.root_redirect, name="root"),
     # ---------------- UI ROUTES ----------------
-    path("", views_ui.index, name="index"),
     path("login/", views_ui.login_view, name="login"),
     path("logout/", views_ui.logout_view, name="logout"),
     path("dashboard/<int:vid>/", views_ui.dashboard_view, name="dashboard"),

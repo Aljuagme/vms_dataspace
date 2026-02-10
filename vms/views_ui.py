@@ -5,7 +5,6 @@ from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
 
 from vms.services.decorators import volunteer_login_required
-from .models import Organization, Volunteer, VolunteerEvent, Skill, Certificate
 from .forms import LoginForm
 import json
 from django.views.decorators.csrf import csrf_exempt
@@ -24,8 +23,19 @@ from vms.services.dataspace import (
     notify_trust_anchor_and_members, log_volunteer_join, log_volunteer_cancel,
 )
 
+from .models import Organization, Volunteer, VolunteerEvent, Skill, Certificate, LocalResource
+
+from vms.interop.services import on_local_event_created_run_pipelines
+
 
 # ---------------- UI Views ----------------
+
+def root_redirect(request):
+    vid = request.session.get("volunteer_id")
+    if vid:
+        return redirect("vms:dashboard", vid=vid)
+    return redirect("vms:login")
+
 @volunteer_login_required
 def index(request):
     return render(request, "vms/index.html")
@@ -205,6 +215,41 @@ def create_event(request):
             shared_since=timezone.now() if expose else None,
         )
 
+        # Create LocalResource payload (DemOrg local schema) so schema pipeline can run
+        local_payload = {
+            "opportunity": {
+                "uuid": f"demorg-{event.id}",   # stable-ish id for prototype
+                "labels": {"en": event.name},
+                # IMPORTANT: only include description if user provided it
+                **({"description": event.description} if event.description else {}),
+                "schedule": {
+                    "date": timezone.now().date().isoformat(),
+                    # If you later add start/end times in UI, set them here.
+                },
+                "where": {
+                    "address": {
+                        "city": event.location or "",
+                    }
+                },
+                "visibility": {"federated": bool(expose)},
+                # Skills here are free-text labels; the skill pipeline will normalize
+                "requirements": {
+                    "competences": [{"text": s.strip()} for s in [x for x in skills.split(",")] if s.strip()]
+                },
+            }
+        }
+
+        local_resource, _ = LocalResource.objects.update_or_create(
+            organization=volunteer.organization,
+            entity_type="OPPORTUNITY",
+            local_id=f"demorg-{event.id}",
+            defaults={"payload": local_payload, "retrieved_at": timezone.now()},
+        )
+
+        event.source_local_id = local_resource.local_id
+        event.save(update_fields=["source_local_id"])
+
+
         # Attach skills
         for s in [s.strip() for s in skills.split(",") if s.strip()]:
             skill, _ = Skill.objects.get_or_create(label=s)
@@ -213,6 +258,7 @@ def create_event(request):
         log_event("EventCreated", f"Event '{event.name}' created by {volunteer.name}")
 
         if expose:
+            on_local_event_created_run_pipelines(event.id, normalize_skills=True)
             # 1) Register on connector
             edc_info = edc_register_asset_and_offer(volunteer.organization, event)
             event.ds_endpoint = edc_info["endpoint"]
@@ -251,7 +297,7 @@ def create_event(request):
             log_event("EventPrivate", f"Event '{event.name}' remains local-only (not published to dataspace).")
 
         messages.success(request, f"Event '{event.name}' created successfully!")
-        return redirect("vms:dashboard", volunteer_id)
+        return redirect("vms:dashboard", vid=volunteer.id)
 
     # Defaults
     next_id = (VolunteerEvent.objects.order_by("-id").first().id + 1) if VolunteerEvent.objects.exists() else 1

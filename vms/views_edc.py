@@ -10,6 +10,8 @@ from django.views.decorators.http import require_POST
 from vms.models import LogEntry, Organization, Volunteer
 from vms.services.logging import log_event
 
+from vms.interop.services import onboard_organization_schema_mapping
+
 
 @csrf_exempt
 def api_onboard_organization(request):
@@ -222,7 +224,9 @@ def api_onboard_organization(request):
     org.connector_endpoint = payload["connector_endpoint"]
     org.metadata_json = payload
     org.certificate_thumbprint = cert_thumbprint
+    onboard_organization_schema_mapping(org.id, entity_types=("OPPORTUNITY",))
     org.member_ds = True
+
     org.save()
 
     log_event("OnboardingApproved", f"{org.name} accepted into Data Space")

@@ -12,9 +12,10 @@
 
     <div class="header">
         <div class="container header-content">
-            <div class="logo">VMS</div>
+            <div class="logo">GO TO
+                FEDERATED PORTAL</div>
             <div class="nav">
-                <a href="{% url 'vms:index' %}">Home</a>
+{#                <a href="{% url 'vms:index' %}">Home</a>#}
                 {% if request.session.volunteer_id %}
                     <a href="{% url 'vms:dashboard' request.session.volunteer_id %}">Dashboard</a>
 
@@ -25,7 +26,7 @@
                         <a href="{% url 'vms:events_page' request.session.volunteer_id %}">Events</a>
                         {% if volunteer.organization.member_ds %}
                             <a href="{% url 'vms:logs_view' %}">Auditor (Logs)</a>
-                            <a href="{% url 'vms:ranking' %}">Ranking</a>
+{#                            <a href="{% url 'vms:ranking' %}">Ranking</a>#}
                             {% endif %}
                         <a href="{% url 'vms:certificate' request.session.volunteer_id %}">Certificates</a>
                     {% endif %}

@@ -25,7 +25,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'   # <-- important for production
 SECRET_KEY = 'django-insecure-j62z9jl-+a2o#!fw5x57klc^#hbmnedn=&y_5ot@$&6dva22lh'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['.onrender.com', "127.0.0.1"]
 # INSTALLED_APPS = []
@@ -132,3 +132,14 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+INTEROP_ENCODER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+INTEROP_MAPPING_K = 5
+INTEROP_MAPPING_TAU = 0.30
+INTEROP_MAPPING_MARGIN = 0.08
+INTEROP_LLM_MIN_CONF = 0.80
+
+ESCO_API_BASE_URL = "https://ec.europa.eu/esco/api"
+ESCO_TIMEOUT_S = 30
+ESCO_LANG = "en"
