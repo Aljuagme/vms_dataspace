@@ -25,7 +25,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'   # <-- important for production
 SECRET_KEY = 'django-insecure-j62z9jl-+a2o#!fw5x57klc^#hbmnedn=&y_5ot@$&6dva22lh'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['.onrender.com', "127.0.0.1"]
 # INSTALLED_APPS = []
