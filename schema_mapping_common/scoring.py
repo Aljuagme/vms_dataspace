@@ -1,16 +1,3 @@
-"""
-scoring.py
-==========
-Semantic encoder + shared scoring/boosting logic for schema mapping.
-
-Goal:
-- Keep one canonical implementation of:
-  - semantic similarity
-  - lexical similarity
-  - generic boosts (type cues, anchor cues, token overlap, name-semantic boost)
-  - final combined score
-- Used by BOTH volunteer.py and opportunity.py (and any future entity mapper).
-"""
 
 from __future__ import annotations
 
@@ -37,13 +24,7 @@ from schema_mapping_common.utilities import (
     ANCHOR_VARIANTS,
 )
 
-
-# ----------------------------
-# Encoder
-# ----------------------------
-
 class SemanticEncoder:
-    """Wrapper for sentence-transformers model."""
 
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.model_name = model_name
@@ -71,20 +52,16 @@ class ScoringWeights:
       combined = sem_w * semantic + lex_w * lexical + boost_w * boost + boost
     where the extra '+ boost' makes boosts act as stabilizers.
     """
-    sem_w: float = 0.70
+    sem_w: float = 0.75
     lex_w: float = 0.20
-    boost_w: float = 0.10
+    boost_w: float = 0.5
 
 
 @dataclass(frozen=True)
 class BoostConfig:
-    """
-    Dynamic boosts:
-    - No platform field-name hardcoding.
-    - Uses only value shape, normalized text cues, anchors, etc.
-    """
+
     # name-semantic boost threshold
-    name_sim_threshold: float = 0.55
+    name_sim_threshold: float = 0.3
     name_boost_value: float = 0.14
 
     # token overlap
@@ -99,24 +76,18 @@ class BoostConfig:
     time_range_boost: float = 0.28
     weekday_boost: float = 0.28
     list_boost: float = 0.15
-    int_boost: float = 0.35
+    int_boost: float = 0.25
 
-    # anchors (strong but generic)
-    anchor_strong: float = 0.60
-    anchor_time: float = 0.58
-    anchor_skills: float = 0.65
-    anchor_location: float = 0.45
+    anchor_strong: float = 0.50
+    anchor_time: float = 0.4
+    anchor_skills: float = 0.4
+    anchor_location: float = 0.4
     anchor_penalty_desc: float = -0.08
 
-
-# ----------------------------
-# Generic detectors (dynamic)
-# ----------------------------
 
 def _contains_weekday(text: str) -> bool:
     t = normalize_text(text)
     for token in WEEKDAYS.keys():
-        # allow plural "Mondays" for English weekday tokens
         if token in {"monday","tuesday","wednesday","thursday","friday","saturday","sunday"}:
             pat = rf"\b{re.escape(token)}s?\b"
         else:
@@ -130,15 +101,8 @@ def _starts_with_any(normalized_text: str, prefixes: Sequence[str]) -> bool:
     return any(normalized_text.startswith(p) for p in prefixes)
 
 
-# ----------------------------
-# Boosts (shared)
-# ----------------------------
-
 def type_boost(example: Any, candidate: CanonicalProperty, cfg: BoostConfig) -> float:
-    """
-    Generic type/value-shape boosts.
-    Works across Volunteer + Opportunity + future entities.
-    """
+
     boost = 0.0
 
     if isinstance(example, int) and candidate.expected_type == "Integer":
@@ -165,15 +129,12 @@ def type_boost(example: Any, candidate: CanonicalProperty, cfg: BoostConfig) -> 
         if TIME_RE.match(ex) and candidate.expected_type == "Time":
             boost += cfg.time_boost
 
-        # Time range in text
         if TIME_RANGE_RE.search(ex) and candidate.key in ("vms:startTime", "vms:endTime", "vms:timeSlots"):
             boost += cfg.time_range_boost
 
-        # Weekday mention in text
         if candidate.key == "vms:daysOfWeek" and _contains_weekday(ex):
             boost += cfg.weekday_boost
 
-        # Weak location cue: any non-empty string can be location-ish, keep tiny
         if candidate.key in ("schema:location", "schema:address") and len(ex) >= 3:
             boost += 0.05
 
@@ -201,9 +162,7 @@ def name_semantic_boost(
     candidate: CanonicalProperty,
     cfg: BoostConfig,
 ) -> float:
-    """
-    Semantic boost based only on field name (no alias table).
-    """
+
     field_name = source_path.split(".")[-1]
     texts = [f"name:{field_name}", candidate.signature()]
     vecs = encoder.embed(texts)
@@ -212,50 +171,38 @@ def name_semantic_boost(
 
 
 def anchor_boost(example: Any, candidate: CanonicalProperty, cfg: BoostConfig) -> float:
-    """
-    Generic anchor cues (Opportunity-style) that also help Volunteer payloads
-    when text blocks contain headings like "Contact:", "Availability:", etc.
-    """
+
     if not isinstance(example, str):
         return 0.0
 
     s = normalize_text(example)
 
-    # skills-like anchors
     if _starts_with_any(s, ANCHOR_VARIANTS["skills"]):
         if candidate.key in ("vms:requiresSkill", "schema:skills"):
             return cfg.anchor_skills
         if candidate.key == "schema:description":
             return cfg.anchor_penalty_desc
 
-    # availability/day anchors
     if _starts_with_any(s, ANCHOR_VARIANTS["availability"]):
         if candidate.key == "vms:daysOfWeek":
             return cfg.anchor_strong
         if candidate.key in ("vms:startTime", "vms:endTime", "vms:availability"):
             return 0.05
 
-    # time anchors
     if _starts_with_any(s, ANCHOR_VARIANTS["time"]):
         if candidate.key in ("vms:startTime", "vms:endTime", "vms:timeSlots"):
             return cfg.anchor_time
 
-    # contact anchors
     if _starts_with_any(s, ANCHOR_VARIANTS["contact"]):
         if candidate.key in ("schema:contactPoint", "schema:email", "schema:telephone"):
             return cfg.anchor_strong
 
-    # location anchors
     if _starts_with_any(s, ANCHOR_VARIANTS["location"]):
         if candidate.key in ("schema:location", "schema:address"):
             return cfg.anchor_location
 
     return 0.0
 
-
-# ----------------------------
-# Final scoring (shared)
-# ----------------------------
 
 def score_candidate(
     encoder: SemanticEncoder,
@@ -284,8 +231,8 @@ def score_candidate(
         + field_token_overlap_boost(source_path, candidate, boosts_cfg)
         + name_semantic_boost(encoder, source_path, candidate, boosts_cfg)
     )
-
-    combined = weights.sem_w * sem + weights.lex_w * lex + weights.boost_w * b + b
+    b = max(-0.15, min(0.35, b))  # clamp
+    combined = weights.sem_w * sem + weights.lex_w * lex + b
 
     return CandidateScore(
         candidate=candidate,
@@ -306,10 +253,7 @@ def rank_candidates(
     weights: Optional[ScoringWeights] = None,
     boosts_cfg: Optional[BoostConfig] = None,
 ) -> List[CandidateScore]:
-    """
-    Shared ranking for any entity.
-    Volunteer + Opportunity should call this.
-    """
+
     weights = weights or ScoringWeights()
     boosts_cfg = boosts_cfg or BoostConfig()
 

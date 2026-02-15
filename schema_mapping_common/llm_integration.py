@@ -1,10 +1,7 @@
-"""
-llm_integration.py
-==================
-Ollama LLM integration for schema mapping.
-"""
 
 import json
+import re
+
 import requests
 from typing import Any, List, Tuple, Optional
 from .data_structures import CanonicalProperty
@@ -73,6 +70,7 @@ def ollama_select_candidate(
         r.raise_for_status()
         data = r.json()
         content = data["message"]["content"]
+        content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content).strip()
         obj = json.loads(content)
 
         chosen = obj.get("chosen_key", None)

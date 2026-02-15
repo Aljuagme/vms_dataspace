@@ -21,6 +21,23 @@ urlpatterns = [
     path("events/create/", views_ui.create_event, name="create_event"),
 path("volunteer/<int:vid>/event/<int:eid>/finish/", views_ui.finish_event, name="finish_event"),
 path('ranking/', views_ui.ranking_view, name='ranking'),
+path("mapping/save/", views_ui.save_mapping_catalog, name="save_mapping_catalog"),
+    path("events/create/", views_ui.create_event, name="create_event"),
+    path("mapping/save/", views_ui.save_mapping_catalog, name="save_mapping_catalog"),
+    path("events/create/", views_ui.create_event, name="create_event"),
+    path("mapping/save/", views_ui.save_mapping_catalog, name="save_mapping_catalog"),
+path("mapping-catalog/opportunity/generate/", views_ui.generate_opportunity_catalog, name="generate_opportunity_catalog"),
+path("events/federated-register/<int:vid>/<str:provider_key>/<path:opportunity_id>/", views_ui.federated_register_event, name="federated_register_event"),
+
+path("api/volunteer/<int:vid>/certificate/context/", views_ui.api_certificate_context, name="api_certificate_context"),
+path("api/certificate/request/", views_ui.api_certificate_request, name="api_certificate_request"),
+path("logs/", views_ui.logs_view, name="logs"),
+
+
+
+
+
+
 
 
     # Volunteer actions
@@ -37,9 +54,9 @@ path('ranking/', views_ui.ranking_view, name='ranking'),
 
 
 
+
     # ---------------- EDC / CONNECTOR ROUTES ----------------
     path("api/onboard-organization/", views_edc.api_onboard_organization, name="api_onboard_organization"),
-    path("api/logs/", views_edc.api_get_logs, name="api_get_logs"),
     path("api/catalog/<int:org_id>/", views_edc.api_catalog, name="api_catalog"),
     path("api/catalog/<int:org_id>/events/<int:event_id>/", views_edc.api_event_detail, name="api_event_detail"),
     path("volunteer/<int:volunteer_id>/toggle-dataspace/", views_edc.toggle_dataspace, name="toggle_dataspace"),

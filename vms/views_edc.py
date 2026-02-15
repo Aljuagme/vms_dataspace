@@ -1,51 +1,30 @@
-# vms/views_edc.py
 import hashlib
 import json
 
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
 
-from vms.models import LogEntry, Organization, Volunteer
-from vms.services.logging import log_event
+from vms.models import Organization, Volunteer
+
 
 from vms.interop.services import onboard_organization_schema_mapping
 
 
 @csrf_exempt
 def api_onboard_organization(request):
-    """
-    Simulates onboarding an organization into the dataspace.
-    Includes realistic usage policies & contract structure aligned with EDC/IDSA concepts.
-    """
+
     if request.method != "POST":
         return HttpResponseBadRequest("Use POST (JSON)")
 
     payload = json.loads(request.body)
-    log_event("OnboardingRequestReceived", json.dumps(payload))
 
-    # --------------------------------------------------
-    # STEP 1 — Metadata validation
-    # --------------------------------------------------
     required = ["name", "contact_email", "connector_endpoint"]
     missing = [f for f in required if not payload.get(f)]
     if missing:
         msg = {"status": "rejected", "reason": f"Missing fields: {missing}"}
-        log_event("OnboardingRejected", json.dumps(msg), level="WARN")
         return JsonResponse(msg, status=400)
 
-    log_event("MetadataValidation", f"All required fields present for {payload.get('name')}")
-
-    # Governance validation
-    if not payload.get("privacy_policy_url"):
-        log_event("GovernanceCheck", "Privacy policy missing", level="WARN")
-    else:
-        log_event("GovernanceCheck", f"Privacy policy present: {payload['privacy_policy_url']}")
-
-    # --------------------------------------------------
-    # STEP 2 — Volunteer schema mapping example
-    # --------------------------------------------------
     sample_volunteer = {
         "name": "Alvaro Juan Gomez",
         "email_address": "alvaro@example.org",
@@ -62,11 +41,7 @@ def api_onboard_organization(request):
         {"local_field": "days_available", "mapped_to": ["vms:availabilityPreference"], "sample_value": "Weekends"},
         {"local_field": "hours_available", "mapped_to": ["vms:availableHoursPerWeek"], "sample_value": 11},
     ]
-    log_event("VolunteerSchemaMapping", json.dumps(schema_mapping, indent=2))
 
-    # --------------------------------------------------
-    # STEP 2b — JSON-LD normalized example
-    # --------------------------------------------------
     normalized_example = {
         "@context": {
             "schema": "https://schema.org/",
@@ -130,11 +105,7 @@ def api_onboard_organization(request):
         ]
     }
 
-    log_event("VolunteerSchemaNormalized", json.dumps(normalized_example, indent=2))
 
-    # --------------------------------------------------
-    # STEP 3 — ESCO enrichment
-    # --------------------------------------------------
     esco_log = [
         {
             "label": "First Aid",
@@ -145,18 +116,13 @@ def api_onboard_organization(request):
             "uri": "http://data.europa.eu/esco/skill/1f1d2ff8-c4c1-45cc-9812-6a7ee84a73cb"
         },
     ]
-    log_event("ESCO_SkillMapping", json.dumps(esco_log, indent=2))
 
-    # --------------------------------------------------
-    # STEP 4 — Realistic EDC-like usage contract
-    # --------------------------------------------------
     contract_id = f"tmpl-{hashlib.sha1(payload['name'].encode()).hexdigest()[:8]}"
 
-    # This structure is now aligned with ODRL-style / EDC-style policies
     contract = {
         "contract_id": contract_id,
         "usageScope": "volunteer-activity-sharing",
-        "actions": ["view", "aggregate"],  # realistic minimal usage rules
+        "actions": ["view", "aggregate"],
         "target": {
             "assetType": "volunteer_events",
             "provider": payload["name"]
@@ -171,11 +137,7 @@ def api_onboard_organization(request):
             "must_provide_privacy_policy"
         ]
     }
-    log_event("ContractTemplateGenerated", json.dumps(contract, indent=2))
 
-    # --------------------------------------------------
-    # STEP 4b — Policy negotiation (also realistic)
-    # --------------------------------------------------
     policy_contracts = {
         "dataUsage": {
             "allowedPurposes": ["volunteer_record_verification", "skill_matching"]
@@ -193,24 +155,9 @@ def api_onboard_organization(request):
             ]
         }
     }
-    log_event("PolicyContractsNegotiated", json.dumps(policy_contracts, indent=2))
 
-    # Negotiation confirmation
-    log_event("EDC.ContractNegotiated", json.dumps({
-        "between": [payload["name"], "TrustAnchor"],
-        "contract_id": contract_id,
-        "note": f"{payload['name']} may now share events and limited volunteer info under agreed terms."
-    }, indent=2))
-
-    # --------------------------------------------------
-    # STEP 5 — Certificate thumbprint (mock trust evidence)
-    # --------------------------------------------------
     cert_thumbprint = hashlib.sha1(payload["name"].encode()).hexdigest().upper()[:32]
-    log_event("CertificateIssued", cert_thumbprint)
 
-    # --------------------------------------------------
-    # STEP 6 — Persist organization as Data Space member
-    # --------------------------------------------------
     volunteer_id = request.session.get("volunteer_id")
     if not volunteer_id:
         return JsonResponse({"status": "rejected", "reason": "No volunteer session found"}, status=400)
@@ -229,11 +176,6 @@ def api_onboard_organization(request):
 
     org.save()
 
-    log_event("OnboardingApproved", f"{org.name} accepted into Data Space")
-
-    # --------------------------------------------------
-    # STEP 7 — Expose catalog endpoints
-    # --------------------------------------------------
     base = org.connector_endpoint.rstrip("/")
     endpoints = {
         "catalog": f"{base}/api/catalog/{org.id}/",
@@ -245,7 +187,6 @@ def api_onboard_organization(request):
             for e in org.events.all()
         ]
     }
-    log_event("ExposedEndpoints", json.dumps(endpoints, indent=2))
 
     return JsonResponse({
         "status": "approved",
@@ -260,22 +201,7 @@ def api_onboard_organization(request):
     })
 
 
-def api_get_logs(request):
-    """Return recent log entries as JSON."""
-    limit = int(request.GET.get("limit", 50))
-    logs = LogEntry.objects.all().order_by("-timestamp")[:limit]
-    return JsonResponse({
-        "count": len(logs),
-        "entries": [
-            {
-                "timestamp": l.timestamp.isoformat(),
-                "level": l.level,
-                "action": l.action,
-                "details": l.details
-            }
-            for l in logs
-        ]
-    })
+
 
 
 def api_catalog(request, org_id):
@@ -317,7 +243,6 @@ def toggle_dataspace(request, volunteer_id):
         org.member_ds = False
         org.certificate_thumbprint = ""
         org.save()
-        log_event("DataSpaceLeft", f"{org.name} left the Data Space")
         return redirect("vms:dashboard", vid=volunteer.id)
 
     else:

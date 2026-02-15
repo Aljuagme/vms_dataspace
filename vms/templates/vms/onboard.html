@@ -2,31 +2,14 @@
 {% block content %}
 
 <style>
-    /* JSON-LD pretty-print */
-    .jsonld-box {
-        background: white !important;
-        color: #333;
-        border: 1px solid #ddd;
-        padding: 16px;
-        font-size: 13px;
-        border-radius: 6px;
-        width: 100%;
-        white-space: pre-wrap;
-        overflow: visible !important; /* No scrollbar */
-    }
-    .jsonld-key {
-        color: #0056b3;
-        font-weight: bold;
-    }
-
-    .contract-card {
-        height: 600px;          /* fixed height */
-        display: flex;
-        flex-direction: column;
-    }
-    .contract-card .card-body {
-        overflow-y: auto;       /* scroll only inside if content too big */
-    }
+  .contract-card {
+    height: 600px;
+    display: flex;
+    flex-direction: column;
+  }
+  .contract-card .card-body {
+    overflow-y: auto;
+  }
 </style>
 
 <div class="card p-4 shadow-sm">
@@ -35,21 +18,20 @@
     <strong>Scenario:</strong> Your organization
     <em>{{ volunteer.organization.name }}</em>
     wants to join the Volunteer Data Space. After submission, the DSGA performs metadata
-    validation, simulates trust approval, activates your catalog, and shows how your volunteer
-    data is mapped into the shared ontology.
+    validation, simulates trust approval, and activates your catalog.
   </p>
 
   <!-- Progress bar -->
   <div class="mb-4">
-      <div class="d-flex justify-content-between small text-muted">
-          <span><strong>Step 1</strong>: PSD Submission</span>
-          <span><strong>Step 2</strong>: DSGA Validation</span>
-          <span><strong>Step 3</strong>: Trust & Contracts</span>
-          <span><strong>Step 4</strong>: Catalog & Ontology</span>
-      </div>
-      <div class="progress" style="height: 8px;">
-        <div id="onboard-progress" class="progress-bar" style="width: 0%;"></div>
-      </div>
+    <div class="d-flex justify-content-between small text-muted">
+      <span><strong>Step 1</strong>: PSD Submission</span>
+      <span><strong>Step 2</strong>: DSGA Validation</span>
+      <span><strong>Step 3</strong>: Trust & Contracts</span>
+      <span><strong>Step 4</strong>: Catalog</span>
+    </div>
+    <div class="progress" style="height: 8px;">
+      <div id="onboard-progress" class="progress-bar" style="width: 0%;"></div>
+    </div>
   </div>
 
   <!-- Requirements -->
@@ -60,7 +42,6 @@
       <li>Privacy policy URL</li>
       <li>Connector endpoint</li>
       <li>Catalog publication capability</li>
-      <li>Ontology mapping for volunteer skills (Schema + ESCO)</li>
       <li>Acceptance of usage contracts</li>
     </ul>
   </div>
@@ -68,112 +49,94 @@
   <!-- Step 1: PSD form -->
   <h4 class="mb-3">Step 1 – Participant Self-description (PSD)</h4>
   <form id="onboard-form" class="mb-4" novalidate>
+    <div class="row g-3">
 
-      <div class="row g-3">
-
-          <div class="col-md-6">
-              <label class="form-label">Organization name</label>
-              <input class="form-control" name="name"
-                     value="{{ volunteer.organization.name }}">
-          </div>
-
-          <div class="col-md-6">
-              <label class="form-label">Contact email</label>
-              <input class="form-control" name="contact_email"
-                     value="{{ volunteer.organization.contact_email|default:'info@org.example' }}">
-          </div>
-
-          <div class="col-md-6">
-              <label class="form-label">Connector endpoint</label>
-              <input class="form-control" name="connector_endpoint"
-                     value="{{ volunteer.organization.connector_endpoint|default:'https://connector.example/' }}">
-          </div>
-
-          <div class="col-md-6">
-              <label class="form-label">Privacy policy URL</label>
-              <input class="form-control" name="privacy_policy_url"
-                     value="{{ volunteer.organization.privacy_policy_url|default:'https://org.example/privacy' }}">
-          </div>
-
+      <div class="col-md-6">
+        <label class="form-label">Organization name</label>
+        <input class="form-control" name="name" value="{{ volunteer.organization.name }}">
       </div>
 
-      <button class="btn btn-success mt-3" type="submit">Submit to DSGA</button>
+      <div class="col-md-6">
+        <label class="form-label">Contact email</label>
+        <input class="form-control" name="contact_email"
+               value="{{ volunteer.organization.contact_email|default:'info@org.example' }}">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Connector endpoint</label>
+        <input class="form-control" name="connector_endpoint"
+               value="{{ volunteer.organization.connector_endpoint|default:'https://connector.example/' }}">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Privacy policy URL</label>
+        <input class="form-control" name="privacy_policy_url"
+               value="{{ volunteer.organization.privacy_policy_url|default:'https://org.example/privacy' }}">
+      </div>
+
+    </div>
+
+    <button class="btn btn-success mt-3" type="submit">Submit to DSGA</button>
   </form>
 
   <!-- STEP 2 -->
   <div id="validation-section" style="display:none;" class="mb-4">
-      <h4>Step 2 – DSGA Requirements Validation</h4>
-      <ul class="list-group small" id="validation-checklist"></ul>
+    <h4>Step 2 – DSGA Requirements Validation</h4>
+    <ul class="list-group small" id="validation-checklist"></ul>
   </div>
 
   <!-- STEP 3 -->
   <div id="contracts-section" style="display:none;" class="mb-4">
-      <h4>Step 3 – Trust & Contract Overview</h4>
+    <h4>Step 3 – Trust & Contract Overview</h4>
 
-      <div class="alert alert-success small">
-          🛡️ Trust Anchor decision: <strong>Approved</strong>
+    <div class="alert alert-success small">
+      🛡️ Trust Anchor decision: <strong>Approved</strong>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="card border-start border-primary border-4 contract-card">
+          <div class="card-body small">
+            <h5>Contract Template</h5>
+            <dl id="contract-summary"></dl>
+          </div>
+        </div>
       </div>
 
-      <div class="row g-3">
-          <div class="col-md-6">
-            <div class="card border-start border-primary border-4 contract-card">
-                  <div class="card-body small">
-                      <h5>Contract Template</h5>
-                      <dl id="contract-summary"></dl>
-                  </div>
-              </div>
+      <div class="col-md-6">
+        <div class="card border-start border-secondary border-4 contract-card">
+          <div class="card-body small">
+            <h5>Policy Contracts</h5>
+            <div id="policy-contracts"></div>
+            <div class="mt-2">
+              Certificate thumbprint: <code id="cert-thumb"></code>
+            </div>
           </div>
-
-          <div class="col-md-6">
-            <div class="card border-start border-secondary border-4 contract-card">
-                  <div class="card-body small">
-                      <h5>Policy Contracts</h5>
-                      <div id="policy-contracts"></div>
-                      <div class="mt-2">
-                          Certificate thumbprint: <code id="cert-thumb"></code>
-                      </div>
-                  </div>
-              </div>
-          </div>
+        </div>
       </div>
+    </div>
   </div>
 
-  <!-- STEP 4 -->
-  <div id="ontology-section" style="display:none;" class="mb-4">
+  <!-- STEP 4 (ONLY catalog endpoint + back button) -->
+  <div id="catalog-section" style="display:none;" class="mb-4">
+    <h4>Step 4 – Catalog Activation</h4>
 
-      <h4>Step 4 – Catalog Activation & Ontology Mapping</h4>
+    <div class="alert alert-info small mb-3">
+      <div class="mb-1"><strong>Catalog endpoint</strong></div>
+      <code id="catalog-endpoint"></code>
+    </div>
 
-      <h5>Published Catalog</h5>
-      <div id="catalog-view" class="list-group small mb-3"></div>
-
-      <h5>Volunteer Schema Mapping (Local → Shared Ontology)</h5>
-      <table class="table table-sm table-bordered small">
-          <thead class="table-light">
-              <tr>
-                  <th>Local field</th>
-                  <th>Mapped to</th>
-                  <th>Sample value</th>
-              </tr>
-          </thead>
-          <tbody id="volunteer-mapping-body"></tbody>
-      </table>
-
-      <button class="btn btn-outline-secondary btn-sm mb-2"
-              type="button"
-              data-bs-toggle="collapse"
-              data-bs-target="#jsonld-wrapper">
-          Show JSON-LD Example
-      </button>
-
-      <div class="collapse" id="jsonld-wrapper">
-         <pre id="jsonld-example" class="jsonld-box"></pre>
-      </div>
+    <div class="d-flex justify-content-end">
+      <a class="btn btn-outline-primary" href="{% url 'vms:dashboard' request.session.volunteer_id %}">
+        ← Go back to Dashboard
+      </a>
+    </div>
   </div>
 
   <!-- Raw developer log -->
   <details class="mt-3">
-      <summary class="small text-muted">Developer Log</summary>
-      <pre id="onboard-log" class="bg-dark text-light p-3 small rounded"></pre>
+    <summary class="small text-muted">Developer Log</summary>
+    <pre id="onboard-log" class="bg-dark text-light p-3 small rounded"></pre>
   </details>
 
 </div>
@@ -182,142 +145,106 @@
 
 {% block extra_js %}
 <script>
-
 function setProgress(p) {
-    document.getElementById("onboard-progress").style.width = p + "%";
+  document.getElementById("onboard-progress").style.width = p + "%";
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    const form = document.getElementById("onboard-form");
-    const logBox = document.getElementById("onboard-log");
+  const form = document.getElementById("onboard-form");
+  const logBox = document.getElementById("onboard-log");
 
-    form.addEventListener("submit", async function(ev){
-        ev.preventDefault();
-        setProgress(10);
+  form.addEventListener("submit", async function(ev){
+    ev.preventDefault();
+    setProgress(10);
 
-        const data = {
-            name: form.name.value,
-            contact_email: form.contact_email.value,
-            connector_endpoint: form.connector_endpoint.value,
-            privacy_policy_url: form.privacy_policy_url.value
-        };
+    const data = {
+      name: form.name.value,
+      contact_email: form.contact_email.value,
+      connector_endpoint: form.connector_endpoint.value,
+      privacy_policy_url: form.privacy_policy_url.value
+    };
 
-        // Reset sections
-        document.getElementById("validation-section").style.display = "none";
-        document.getElementById("contracts-section").style.display = "none";
-        document.getElementById("ontology-section").style.display = "none";
-        document.getElementById("volunteer-mapping-body").innerHTML = "";
-        document.getElementById("catalog-view").innerHTML = "";
-        document.getElementById("jsonld-example").innerText = "";
+    // Reset sections
+    document.getElementById("validation-section").style.display = "none";
+    document.getElementById("contracts-section").style.display = "none";
+    document.getElementById("catalog-section").style.display = "none";
+    document.getElementById("catalog-endpoint").textContent = "";
 
-        try {
-            const res = await fetch("{% url 'vms:api_onboard_organization' %}", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify(data)
-            });
-            const j = await res.json();
+    try {
+      const res = await fetch("{% url 'vms:api_onboard_organization' %}", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+      });
+      const j = await res.json();
 
-            if (!res.ok) {
-                logBox.innerText = "Rejected:\n" + JSON.stringify(j, null, 2);
-                setProgress(100);
-                return;
-            }
+      if (!res.ok) {
+        logBox.innerText = "Rejected:\n" + JSON.stringify(j, null, 2);
+        setProgress(100);
+        return;
+      }
 
-            // STEP 2
-            setProgress(40);
-            const checklist = document.getElementById("validation-checklist");
-            const checks = [
-                ["Organization name present", !!data.name],
-                ["Contact email present", !!data.contact_email],
-                ["Connector endpoint present", !!data.connector_endpoint],
-                ["Privacy policy URL present", !!data.privacy_policy_url],
-                ["Volunteer ontology mapping available", j.volunteer_schema?.length > 0]
-            ];
-            checklist.innerHTML = "";
-            checks.forEach(([label, ok]) => {
-                const li = document.createElement("li");
-                li.className = "list-group-item d-flex justify-content-between";
-                li.innerHTML = `<span>${label}</span><span>${ok ? "✔" : "✖"}</span>`;
-                checklist.appendChild(li);
-            });
-            document.getElementById("validation-section").style.display = "block";
+      // STEP 2
+      setProgress(40);
+      const checklist = document.getElementById("validation-checklist");
+      const checks = [
+        ["Organization name present", !!data.name],
+        ["Contact email present", !!data.contact_email],
+        ["Connector endpoint present", !!data.connector_endpoint],
+        ["Privacy policy URL present", !!data.privacy_policy_url],
+      ];
+      checklist.innerHTML = "";
+      checks.forEach(([label, ok]) => {
+        const li = document.createElement("li");
+        li.className = "list-group-item d-flex justify-content-between";
+        li.innerHTML = `<span>${label}</span><span>${ok ? "✔" : "✖"}</span>`;
+        checklist.appendChild(li);
+      });
+      document.getElementById("validation-section").style.display = "block";
 
-            // STEP 3
-            setProgress(70);
-            const cs = document.getElementById("contract-summary");
-            cs.innerHTML = `
-                <dt>Contract ID</dt><dd><code>${j.contract.contract_id}</code></dd>
-                <dt>Usage Scope</dt><dd>${j.contract.usageScope}</dd>
-                <dt>Actions</dt><dd>${j.contract.actions.join(", ")}</dd>
-                <dt>Target</dt><dd>${JSON.stringify(j.contract.target, null, 2)}</dd>
-                <dt>Constraints</dt><dd><pre>${JSON.stringify(j.contract.constraints, null, 2)}</pre></dd>
-                <dt>Obligations</dt><dd>${j.contract.obligations.join(", ")}</dd>
-            `;
+      // STEP 3
+      setProgress(70);
+      const cs = document.getElementById("contract-summary");
+      cs.innerHTML = `
+        <dt>Contract ID</dt><dd><code>${j.contract.contract_id}</code></dd>
+        <dt>Usage Scope</dt><dd>${j.contract.usageScope}</dd>
+        <dt>Actions</dt><dd>${j.contract.actions.join(", ")}</dd>
+        <dt>Target</dt><dd>${JSON.stringify(j.contract.target, null, 2)}</dd>
+        <dt>Constraints</dt><dd><pre>${JSON.stringify(j.contract.constraints, null, 2)}</pre></dd>
+        <dt>Obligations</dt><dd>${j.contract.obligations.join(", ")}</dd>
+      `;
 
-            const pc = document.getElementById("policy-contracts");
-            pc.innerHTML = "";
-            Object.entries(j.policy_contracts).forEach(([k, v]) => {
-                pc.innerHTML += `<strong>${k}</strong><pre>${JSON.stringify(v, null, 2)}</pre>`;
-            });
+      const pc = document.getElementById("policy-contracts");
+      pc.innerHTML = "";
+      Object.entries(j.policy_contracts).forEach(([k, v]) => {
+        pc.innerHTML += `<strong>${k}</strong><pre>${JSON.stringify(v, null, 2)}</pre>`;
+      });
 
-            document.getElementById("cert-thumb").innerText = j.certificate_thumbprint;
-            document.getElementById("contracts-section").style.display = "block";
+      document.getElementById("cert-thumb").innerText = j.certificate_thumbprint;
+      document.getElementById("contracts-section").style.display = "block";
 
-            // STEP 4
-            setProgress(90);
-            const cRes = await fetch(`/api/catalog/${j.organization_id}/`);
-            const catalog = await cRes.json();
+      // STEP 4 (catalog endpoint only)
+      setProgress(90);
 
-            const view = document.getElementById("catalog-view");
-            view.innerHTML = `
-                <div class="list-group-item list-group-item-info">
-                    <em>Catalog Endpoint:</em><br><code>${catalog.endpoints.catalog}</code>
-                </div>
-            `;
-            catalog.endpoints.events.forEach(ev => {
-                view.innerHTML += `
-                    <div class="list-group-item">
-                        <strong>${ev.title}</strong><br>
-                        <code>${ev.endpoint}</code>
-                    </div>
-                `;
-            });
+      // If your API already returns a catalog endpoint, prefer it.
+      // Otherwise fall back to the connector endpoint provided by the user.
+      const catalogEndpoint =
+        j.catalog_endpoint ||
+        j.catalog?.endpoints?.catalog ||
+        data.connector_endpoint ||
+        "";
 
-            // Volunteer mapping table
-            const tbody = document.getElementById("volunteer-mapping-body");
-            j.volunteer_schema.forEach(m => {
-                tbody.innerHTML += `
-                    <tr>
-                        <td>${m.local_field}</td>
-                        <td>${Array.isArray(m.mapped_to) ? m.mapped_to.join(", ") : m.mapped_to}</td>
-                        <td>${m.sample_value}</td>
-                    </tr>
-                `;
-            });
+      document.getElementById("catalog-endpoint").textContent = catalogEndpoint;
+      document.getElementById("catalog-section").style.display = "block";
 
-            // JSON-LD pretty-print
-            function highlightJSONKeys(text) {
-                return text.replace(/"([^"]+)":/g, (m, p) =>
-                    `<span class="jsonld-key">"${p}"</span>:`
-                );
-            }
+      setProgress(100);
+      logBox.innerText = JSON.stringify(j, null, 2);
 
-            document.getElementById("jsonld-example").innerHTML =
-                highlightJSONKeys(JSON.stringify(j.normalized_example, null, 2));
-
-            document.getElementById("ontology-section").style.display = "block";
-            setProgress(100);
-
-            logBox.innerText = JSON.stringify(j, null, 2);
-
-        } catch (err) {
-            logBox.innerText = "Error: " + err;
-            setProgress(100);
-        }
-
-    });
+    } catch (err) {
+      logBox.innerText = "Error: " + err;
+      setProgress(100);
+    }
+  });
 });
-
 </script>
 {% endblock %}

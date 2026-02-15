@@ -1,0 +1,257 @@
+{# templates/portal/directory.html #}
+{% extends "portal/base.html" %}
+{% block content %}
+  <h1>Network Directory</h1>
+  <h2>Number of Organizations present in the Federated Network: {{ providers|length }}</h2>
+    <h3>Entry Point: </h3>
+    <p>https:federated.example.org/api/discovery</p>
+
+  <div class="grid">
+    {% for p in providers %}
+      <div class="card card-link"
+
+         style="text-decoration:none; color:inherit;">
+        <h3>{{ p.name }}</h3>
+
+        <div class="muted">{{ p.short_description }}</div>
+      <br>
+      <div class="muted">{{ p.connector_endpoint }}</div>
+
+
+        <a href="{% url 'provider_detail' p.platform_key %}">
+          View self-description (JSON-LD) →
+        </a>
+      </div>
+    {% empty %}
+      <div class="card">No organizations registered yet.</div>
+    {% endfor %}
+  </div>
+
+  <hr style="margin:32px 0; border:none; border-top:1px solid #eee;">
+
+  <h2>Federated opportunities</h2>
+  <p class="muted">Discovery of opportunities shared to the federation.</p>
+
+  <form method="get" style="margin: 12px 0 18px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <input
+      type="text"
+      name="skill"
+      value="{{ skill_query|default:'' }}"
+      placeholder="Search by skill… e.g., emergency care"
+      style="padding:10px 12px; min-width:320px; border:1px solid #ddd; border-radius:10px;"
+    >
+    <button type="submit" style="padding:10px 14px; border-radius:10px; border:1px solid #ddd; cursor:pointer;">
+      Search
+    </button>
+
+    {% if skill_query %}
+      <a href="?" class="muted" style="text-decoration:none;">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if skill_query %}
+    <div class="muted" style="margin-bottom:10px;">
+      Matching opportunities: <strong>{{ matched_total }}</strong>
+    </div>
+
+    {% if skill_candidates %}
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;">
+        {% for c in skill_candidates %}
+          <span class="chip" title="{{ c.uri }}">
+            {{ c.label }}
+          </span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="muted" style="margin-bottom:18px;">
+        No ESCO candidates found for “{{ skill_query }}”.
+      </div>
+    {% endif %}
+  {% endif %}
+
+  {# 2-column grid only for opportunities #}
+  <div class="opp-grid">
+    {% for org, events in rows %}
+      {% for e in events %}
+        <div class="card opp-card">
+  <h3 class="opp-title">{{ e.name }}</h3>
+
+  {% if e.description %}
+    <p class="muted opp-desc">{{ e.description }}</p>
+  {% endif %}
+
+  <div class="opp-meta">
+    <div class="muted">📍 {{ e.location|default:"Remote / not specified" }}</div>
+    <div class="muted">⏱ {{ e.duration_hours }} hour(s)</div>
+
+    {% if e.start_date %}
+      <div class="muted">🗓 Start: {{ e.start_date }}</div>
+    {% endif %}
+    {% if e.end_date %}
+      <div class="muted">🗓 End: {{ e.end_date }}</div>
+    {% endif %}
+
+    {% if e.max_capacity %}
+      <div class="muted">👥 Capacity: {{ e.max_capacity }}</div>
+    {% endif %}
+  </div>
+
+  {% if e.address_text %}
+    <div class="muted" style="margin-top:8px;">
+      <strong>Address:</strong> {{ e.address_text }}
+    </div>
+  {% endif %}
+
+  {% if e.organizer_name or e.contact_email or e.contact_phone %}
+    <div class="opp-detail" style="margin-top:10px;">
+      <div class="muted"><strong>Organizer:</strong> {{ e.organizer_name|default:"(not specified)" }}</div>
+
+      {% if e.contact_name %}
+        <div class="muted"><strong>Contact:</strong> {{ e.contact_name }}</div>
+      {% endif %}
+      {% if e.contact_email %}
+        <div class="muted"><strong>Email:</strong> {{ e.contact_email }}</div>
+      {% endif %}
+      {% if e.contact_phone %}
+        <div class="muted"><strong>Phone:</strong> {{ e.contact_phone }}</div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if e.time_blocks or e.days_of_week %}
+    <div class="opp-detail" style="margin-top:10px;">
+      {% if e.time_blocks %}
+        <div class="muted">
+          <strong>Time blocks:</strong>
+          {{ e.time_blocks|join:", " }}
+        </div>
+      {% endif %}
+      {% if e.days_of_week %}
+        <div class="muted">
+          <strong>Days:</strong>
+          {{ e.days_of_week|join:", " }}
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if e.skills_labels %}
+    <div class="opp-skills">
+      {% for s in e.skills_labels %}
+        <span class="chip">{{ s }}</span>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="muted" style="margin-top:10px;">No skills specified.</div>
+  {% endif %}
+
+  <p class="muted" style="margin-top:10px;">
+    <a href="{% url 'opportunity_detail' org.platform_key e.id %}">
+      Show JSON-LD →
+    </a>
+  </p>
+
+  <div class="muted opp-provider" style="margin-top:12px;">
+    Provider: {{ org.platform_key }}
+  </div>
+
+        {% if volunteer and my_org_key %}
+  <div style="margin-top:12px;">
+    {% if org.platform_key == my_org_key and e.db_id %}
+      <form method="post" action="{% url 'vms:register_event' volunteer.id e.db_id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">Local Register</button>
+      </form>
+    {% else %}
+      <form method="post" action="{% url 'vms:federated_register_event' volunteer.id org.platform_key e.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline-primary">Federated Register</button>
+      </form>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="muted" style="margin-top:10px;">Log in to register.</div>
+{% endif %}
+
+
+  <script type="application/ld+json">
+{{ e.jsonld_str|safe }}
+  </script>
+</div>
+
+      {% endfor %}
+    {% endfor %}
+  </div>
+
+  <style>
+
+    .opp-grid{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 14px;
+    }
+    @media (max-width: 900px){
+      .opp-grid{ grid-template-columns: 1fr; }
+    }
+
+    .opp-card{ position: relative; }
+
+    .opp-top{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 12px;
+    }
+
+    .opp-badges{ display:flex; gap:8px; align-items:center; }
+    .badge{
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,0,0,0.08);
+      background: rgba(0,0,0,0.03);
+    }
+
+    .opp-title{ margin-top: 10px; }
+
+    .opp-desc{
+      margin-top: 8px;
+      line-height: 1.35;
+      opacity: 0.95;
+    }
+
+    .opp-meta{
+      display:flex;
+      flex-wrap:wrap;
+      gap: 10px 16px;
+      margin-top: 10px;
+    }
+
+    .opp-skills{
+      display:flex;
+      flex-wrap:wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .chip{
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,0,0,0.08);
+      background: rgba(0,0,0,0.02);
+      white-space: nowrap;
+    }
+
+    .opp-provider{ opacity: 0.85; }
+      .opp-detail{
+    padding: 10px 12px;
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 10px;
+    background: rgba(0,0,0,0.015);
+  }
+  .opp-meta .muted{
+    white-space: nowrap;
+  }
+  </style>
+{% endblock %}

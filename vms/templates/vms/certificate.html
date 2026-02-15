@@ -11,14 +11,13 @@
   .badge.unlocked { animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(255,210,122,.6)} 70%{box-shadow:0 0 0 10px rgba(255,210,122,0)} 100%{box-shadow:0 0 0 0 rgba(255,210,122,0)} }
 
-  .activity { padding:10px 12px; border:1px solid #e6eaf2; border-radius:10px; margin-bottom:8px; background:#f9fbfd; }
+  .activity { padding:10px 12px; border:1px solid #e6eaf2; border-radius:10px; margin-bottom:10px; background:#f9fbfd; }
   .activity.contributes { border-color:#9fe3bf; background:#f4fff8; }
-  .activity .meta { color:#687086; font-size: 13px; margin-top:4px; }
+  .activity .meta { color:#687086; font-size: 13px; margin-top:6px; line-height:1.35; }
 
   .btn { background:#1a73e8; color:#fff; border:none; padding:10px 16px; border-radius:10px; cursor:pointer; font-weight:600; width:100%; }
   .btn:disabled { opacity:.45; cursor:not-allowed; }
 
-  /* Certificate styling */
   .certificate-view {
     margin-top:24px; padding:40px; border:6px double #1a263a; border-radius:14px;
     background:#fefefe; text-align:center; font-family: "Georgia", serif;
@@ -30,24 +29,37 @@
   .certificate-view .skill { font-size:18px; font-style:italic; margin:10px 0; color:#0c5c2d; }
   .certificate-view .details { font-size:15px; margin:8px 0; color:#444; }
   .certificate-view .issuer { margin-top:20px; font-size:13px; color:#777; }
+
+  /* Logs (clean) */
+  #cert-log-container { margin-top:24px; }
+  .cert-log-entry {
+    background:#fff;
+    border:1px solid #e8ecf6;
+    border-left:4px solid #1a6ae3;
+    padding:12px 14px;
+    margin-bottom:10px;
+    border-radius:10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    white-space: pre-wrap;
+  }
+  .cert-log-entry .type { font-weight:700; color:#1a4ea8; }
+  .cert-log-entry .timestamp { color:#777; font-size:12px; margin-top:6px; }
 </style>
 
 <div class="cert-layout">
 
-  <!-- MAIN -->
   <div class="card">
     <h2>Certificate — {{ volunteer.name }}</h2>
-    <p class="hint" id="status-text">Keep volunteering to unlock your certificate at 100h!</p>
+    <p class="hint" id="status-text">Loading…</p>
 
     <div id="eligibility" style="margin:16px 0;">
-      <h3 style="margin-bottom:8px;">Distribution hours</h3>
-      <div><strong>Total:</strong> <span class="hours" id="total-hours">–</span></div>
-      <div class="hint" id="org-breakdown">
+      <h3 style="margin-bottom:8px;">Distribution hours (First Aid / ESCO)</h3>
+      <div><strong>Total contributing:</strong> <span class="hours" id="total-hours">–</span></div>
+      <div class="hint" id="org-breakdown" style="margin-top:6px;">
         <strong>{{ volunteer.organization }}:</strong> <span id="home-hours">–</span><br>
-        <strong>Volunteering Solutions:</strong> <span id="remote-hours">–</span>
+        <strong>Federated providers:</strong> <span id="remote-hours">–</span>
       </div>
     </div>
-
 
     <h3>Your activities</h3>
     <div id="activities"></div>
@@ -55,91 +67,24 @@
     <button id="do-cert" data-vid="{{ volunteer.id }}" class="btn" disabled>Request Certificate</button>
 
     <div id="cert-result"></div>
+
+    <div id="cert-log-container" class="card" style="display:none;">
+      <h3 style="margin-top:0;">Behind the Scenes — Data Space Logs</h3>
+      <div id="cert-logs"></div>
+    </div>
   </div>
 
-
-
-  <!-- BADGE RAIL -->
   <aside class="rail">
     <div class="card">
       <h3 style="margin-top:0;">Badges</h3>
       <div class="badge-grid" style="margin-top:10px;">
-        <div class="badge locked" id="badge-1"><img src="/static/vms/images/badges/badge0.png" alt="Badge 0"></div>
-        <div class="badge locked" id="badge-2"><img src="/static/vms/images/badges/badge1.png" alt="Badge 1"></div>
-        <div class="badge locked" id="badge-3"><img src="/static/vms/images/badges/badge3.png" alt="Badge 3"></div>
+        <div class="badge locked" id="badge-1"><img src="/static/vms/images/badges/badge0.png" alt="Badge 10h"></div>
+        <div class="badge locked" id="badge-2"><img src="/static/vms/images/badges/badge1.png" alt="Badge 50h"></div>
+        <div class="badge locked" id="badge-3"><img src="/static/vms/images/badges/badge3.png" alt="Badge 100h"></div>
       </div>
       <p class="hint" style="margin-top:10px;" id="badge-hint">–</p>
     </div>
   </aside>
-<div id="cert-log-container" class="card" style="margin-top:32px; display:none;">
-  <h3 style="margin-top:0;">Behind the Scenes — Data Space Logs</h3>
-  <div id="cert-logs"></div>
-</div>
-
-<style>
-  .cert-log-entry {
-      background:#fafbff;
-      border-left:4px solid #1a6ae3;
-      padding:12px 16px;
-      margin-bottom:10px;
-      border-radius:6px;
-      font-family: "JetBrains Mono", monospace;
-      white-space: pre-wrap;
-  }
-  .cert-log-entry .type {
-      font-weight:700;
-      color:#1a4ea8;
-  }
-  .cert-log-entry .timestamp {
-      color:#777;
-      font-size:12px;
-      margin-top:6px;
-  }
-</style>
-
-
-<style>
-  .cert-log-entry {
-      background:#fafbff;
-      border-left:4px solid #1a6ae3;
-      padding:12px 16px;
-      margin-bottom:10px;
-      border-radius:6px;
-      font-family: "JetBrains Mono", monospace;
-      white-space: pre-wrap;
-  }
-  .cert-log-entry .type {
-      font-weight:700;
-      color:#1a4ea8;
-  }
-  .cert-log-entry .timestamp {
-      color:#777;
-      font-size:12px;
-      margin-top:6px;
-  }
-</style>
-
-<script>
-// Fetch certificate-related logs
-(async function() {
-  const box = document.getElementById("cert-logs");
-  const res = await fetch("/api/certificate/logs/{{ volunteer.id }}/");
-  const data = await res.json();
-
-  if (!data.logs.length) {
-      box.innerHTML = "<p class='text-muted'>No certificate logs yet.</p>";
-      return;
-  }
-
-  box.innerHTML = data.logs.map(log => `
-      <div class="cert-log-entry">
-          <div class="type">${log.type}</div>
-          <div>${log.message}</div>
-          <div class="timestamp">${log.timestamp}</div>
-      </div>
-  `).join("");
-})();
-</script>
 
 </div>
 {% endblock %}
@@ -165,40 +110,69 @@
   const ctxRes = await fetch(`/api/volunteer/${vid}/certificate/context/`);
   const ctx = await ctxRes.json();
 
-  $total.textContent = ctx.total_hours + "h";
-  $homeH.textContent = ctx.hours_by_platform.home + "h";
-  $remoteH.textContent = ctx.hours_by_platform.remote + "h";
+  const total = ctx.total_hours_contributing || 0;
+
+  $total.textContent = total + "h";
+  $homeH.textContent = (ctx.hours_by_platform?.home ?? 0) + "h";
+  $remoteH.textContent = (ctx.hours_by_platform?.remote ?? 0) + "h";
 
   // badges
-  if (ctx.total_hours >= 10) b1.classList.remove("locked");
-  if (ctx.total_hours >= 50) b2.classList.remove("locked");
+  if (total >= 10) b1.classList.remove("locked");
+  if (total >= 50) b2.classList.remove("locked");
 
-  if (ctx.total_hours >= 100) {
+  if (total >= 100) {
     b3.classList.remove("locked");
     b3.classList.add("unlocked");
     $badgeHint.textContent = "🎉 Eligible for Certificate";
     $btn.disabled = false;
-    $status.innerHTML = `Congratulations! You’ve reached <strong>100h as a volunteer</strong>.<br>Claim your First Aid certificate.`;
+    $status.innerHTML = `Eligible: <strong>${total}h</strong> in First Aid (ESCO) activities.<br>Request your certificate.`;
   } else {
-    $badgeHint.textContent = (100 - ctx.total_hours) + "h to go";
+    $badgeHint.textContent = (100 - total) + "h to go";
     $btn.disabled = true;
+    $status.innerHTML = `Contributing hours: <strong>${total}h</strong> (need 100h).`;
   }
 
-  // activities
-  $activities.innerHTML = ctx.activities.map(a => `
-    <div class="activity ${a.contributes ? 'contributes':''}">
-      <div><strong>${a.title}</strong></div>
-      <div class="meta">${a.provider} • ${a.hours}h ${a.skills?.length ? "• " + a.skills.join(", ") : ""}</div>
+  // activities (show evidence)
+  $activities.innerHTML = (ctx.activities || []).map(a => {
+    const norm = (a.normalized || []).map(n =>
+      `"${n.raw}" → ${n.label} `
+    ).join("<br>");
+
+    return `
+      <div class="activity ${a.contributes ? 'contributes':''}">
+        <div style="display:flex; justify-content:space-between; gap:10px;">
+          <div><strong>${a.title}</strong></div>
+          <div>${a.contributes ? "<span class='badge bg-success'>Verified</span>" : "<span class='badge bg-secondary'>Doesn't count</span>"}</div>
+        </div>
+        <div class="meta">${a.provider} • ${a.hours}h • ${a.is_remote ? "Federated" : "Local"}</div>
+        ${a.skills?.length ? `<div class="meta"><strong>Required skills:</strong> ${a.skills.join(", ")}</div>` : ``}
+        ${norm ? `<div class="meta"><strong>Normalization:</strong><br>${norm}</div>` : ``}
+      </div>
+    `;
+  }).join("");
+
+  // load logs
+  const logRes = await fetch(`/api/certificate/logs/${vid}/`);
+  const logData = await logRes.json();
+  const logs = logData.logs || [];
+  const $logContainer = document.getElementById("cert-log-container");
+  const $logBox = document.getElementById("cert-logs");
+
+  $logContainer.style.display = "block";
+  $logBox.innerHTML = logs.length ? logs.map(l => `
+    <div class="cert-log-entry">
+      <div class="type">${l.type}</div>
+      <div>${l.message}</div>
+      <div class="timestamp">${l.timestamp}</div>
     </div>
-  `).join("");
+  `).join("") : "<p class='text-muted'>No logs yet.</p>";
 
   // request certificate
   $btn.onclick = async () => {
-    const selected = ctx.activities.filter(a => a.contributes).map(a => ({ id: a.id, provider: a.provider }));
     const r = await fetch("/api/certificate/request/", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ volunteer_id: vid, items: selected })
+      body: JSON.stringify({ volunteer_id: vid })
     });
     const resj = await r.json();
 
@@ -210,15 +184,27 @@
           <h3>This certifies that</h3>
           <div class="name">{{ volunteer.name }}</div>
           <div class="details">has successfully completed</div>
-          <div class="hours"><strong>+100 hours</strong> of volunteer service</div>
+          <div class="hours"><strong>${cert["vms:totalHours"]} hours</strong> of volunteer service</div>
           <div class="skill">in First Aid activities</div>
-          <div class="details">across multiple organizations</div>
+          <div class="details">across local + federated organizations</div>
           <div class="issuer">Issued by the Volunteer Data Space • ${cert["schema:dateIssued"]}</div>
         </div>`;
+    } else {
+      $result.innerHTML = `<div class="alert alert-warning mt-3">Not eligible: ${resj.reason || "Unknown reason"}</div>`;
     }
+
+    // refresh logs
+    const logRes2 = await fetch(`/api/certificate/logs/${vid}/`);
+    const logData2 = await logRes2.json();
+    const logs2 = logData2.logs || [];
+    $logBox.innerHTML = logs2.length ? logs2.map(l => `
+      <div class="cert-log-entry">
+        <div class="type">${l.type}</div>
+        <div>${l.message}</div>
+        <div class="timestamp">${l.timestamp}</div>
+      </div>
+    `).join("") : "<p class='text-muted'>No logs yet.</p>";
   };
 })();
 </script>
-
-
 {% endblock %}

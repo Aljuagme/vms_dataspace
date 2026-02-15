@@ -1,8 +1,3 @@
-"""
-utilities.py
-============
-Shared utility functions for schema mapping.
-"""
 
 import re
 import json
@@ -12,9 +7,6 @@ from pathlib import Path
 
 from schema_mapping_common.data_structures import CandidateScore, CanonicalProperty, get_canonical_properties
 
-# ================================================
-# Order
-# ================================================
 ORDER_VOLUNTEER: List[str] = [
     "@context",
     "@type",
@@ -45,13 +37,70 @@ ORDER_OPPORTUNITY: List[str] = [
     "vms:requiresSkill",
     "vms:visibility",
 ]
+ADDRESS_LINE_RE = re.compile(
+    r"^\s*(?P<street>[^,]+?)\s*,\s*(?P<postcode>\d{4,6})\s+(?P<city>[^,]+?)\s*(?:,\s*(?P<country>[^,]+))?\s*$"
+)
+def parse_place_and_address(raw: str) -> Dict[str, Any]:
 
-# IMPORTANT: schema:contactPoint is NOT top-level in your thesis, it's inside schema:organizer.
+    s = str(raw or "").strip()
+    place = {"@type": "schema:Place", "schema:address": {"@type": "schema:PostalAddress"}}
+    if not s:
+        return place
+
+    if "(" in s and ")" in s and len(s) <= 120:
+        place["schema:name"] = s
+        return place
+
+    parsed_addr = parse_postal_address(s)
+    if "schema:postalCode" in parsed_addr or "schema:streetAddress" in parsed_addr:
+        place["schema:address"].update(parsed_addr)
+        return place
+
+    place["schema:name"] = s
+    place["schema:address"]["schema:streetAddress"] = s
+    return place
+
+
+def parse_postal_address(line: str, *, debug: bool = False) -> Dict[str, str]:
+    s = str(line).strip()
+    if not s:
+        if debug:
+            print("[LOCATION-PARSE] empty input")
+        return {}
+
+    m = ADDRESS_LINE_RE.match(s)
+    if not m:
+        if debug:
+            print(f"[LOCATION-PARSE] no regex match -> fallback addressLocality={s!r}")
+        return {"schema:streetAddress": s}
+
+    street = (m.group("street") or "").strip()
+    postcode = (m.group("postcode") or "").strip()
+    city = (m.group("city") or "").strip()
+    country = (m.group("country") or "").strip()
+
+    out = {}
+    if street:
+        out["schema:streetAddress"] = street
+    if postcode:
+        out["schema:postalCode"] = postcode
+    if city:
+        out["schema:addressLocality"] = city
+    if country:
+        out["schema:addressCountry"] = country
+
+    if debug:
+        print("[LOCATION-PARSE] matched regex")
+        print("  streetAddress =", street)
+        print("  postalCode    =", postcode)
+        print("  locality      =", city)
+        print("  country       =", country)
+
+    return out
+
+
 FORBIDDEN_TOPLEVEL_KEYS = {"schema:contactPoint"}
 
-# ================================================
-# Constants
-# ================================================
 CAMEL_BREAK_RE = re.compile(r"([a-z])([A-Z])")
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -87,7 +136,6 @@ ANCHOR_RE = re.compile(
 
 
 def load_json_payload(rel_path: str) -> Dict[str, Any]:
-    """Load JSON payload from a relative path."""
     base = Path(__file__).resolve().parent
     path = base / rel_path
     with path.open("r", encoding="utf-8") as f:
@@ -99,11 +147,7 @@ def normalize_text(
     *,
     keep_colon: bool = True,
 ) -> str:
-    """
-    Normalize text for comparison/search.
-    - split_camel: inserts spaces in camelCase / PascalCase strings
-    - keep_colon: keep ':' useful for anchors like 'skills:'.
-    """
+
     s = str(s).strip()
 
     s = CAMEL_BREAK_RE.sub(r"\1 \2", s)
@@ -117,17 +161,11 @@ def normalize_text(
 
 
 def tokenize(s: str) -> List[str]:
-    """Tokenize text into words."""
     return [t for t in normalize_text(s).split() if t]
 
 
 def flatten_payload(payload: Dict[str, Any], prefix: str = "") -> List[Tuple[str, Any]]:
-    """
-    Recursive flattening:
-    - dict: expands keys (a.b.c)
-    - list/tuple/set: kept as list value under the current path
-    - primitives: emitted as-is
-    """
+
     out: List[Tuple[str, Any]] = []
 
     def walk(obj: Any, path: str) -> None:
@@ -145,7 +183,6 @@ def flatten_payload(payload: Dict[str, Any], prefix: str = "") -> List[Tuple[str
 
 
 def source_context(path: str, example: Any) -> str:
-    """Build a context string for embedding similarity."""
     if isinstance(example, (list, tuple, set)):
         ex = ", ".join(map(str, list(example)[:5]))
     else:
@@ -155,7 +192,6 @@ def source_context(path: str, example: Any) -> str:
 
 
 def lexical_similarity(a: str, b: str) -> float:
-    """Calculate lexical similarity between two strings."""
     return SequenceMatcher(None, normalize_text(a), normalize_text(b)).ratio()
 
 
@@ -164,10 +200,7 @@ def decide_mapping(
     tau: float,
     margin: float,
 ) -> Tuple[str, Optional[CanonicalProperty], str]:
-    """
-    Decide mapping status based on scores.
-    Returns: (status, best_target, note)
-    """
+
     if not ranked:
         return "REJECTED", None, "no candidates"
 
@@ -184,11 +217,6 @@ def decide_mapping(
 
 
 def split_into_segments(text: str) -> List[str]:
-    """
-    Anchor-aware, sentence-ish segmentation without duplicating anchors.
-    - First split by punctuation to keep segments manageable.
-    - If a sentence contains anchors, cut at anchor positions.
-    """
     raw = str(text).strip()
     if not raw:
         return []
@@ -223,17 +251,12 @@ def split_into_segments(text: str) -> List[str]:
 
 def _weekday_regex(token: str) -> str:
     t = re.escape(normalize_text(token))
-    # allow plural "Mondays" for English weekday tokens
     if normalize_text(token) in {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}:
         return rf"\b{t}s?\b"
     return rf"\b{t}\b"
 
 
 def extract_weekdays(text: str) -> List[str]:
-    """
-    Extract weekdays from free text, preserving order of appearance.
-    Also supports weekday ranges like "monday to friday" / "martes a viernes" / "montag bis freitag".
-    """
     t = normalize_text(text)
 
     found_positions: List[Tuple[int, str]] = []
@@ -276,10 +299,7 @@ def extract_weekdays(text: str) -> List[str]:
 
 
 def extract_time_range(text: str) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Extract "HH:MM - HH:MM" (or "HH:MM–HH:MM") from text.
-    Returns (start, end) normalized to zero-padded HH:MM.
-    """
+
     m = TIME_RANGE_RE.search(str(text))
     if not m:
         return None, None
@@ -291,24 +311,17 @@ def extract_time_range(text: str) -> Tuple[Optional[str], Optional[str]]:
 
     return norm(s), norm(e)
 
-
-# ============================================================
-# Subgroup helpers (structure heterogeneity)
-# ============================================================
-
 POSTCODE_ANY_RE = re.compile(r"\b(\d{4,6})\b")
 COUNTRY_PAREN_RE = re.compile(r"\(([A-Z]{2})\)")
 
 
 def normalize_country(value: Any) -> Any:
-    """Normalize a country value to a 2-letter code when obvious, otherwise return as-is."""
     if not isinstance(value, str):
         return value
     v = value.strip()
     if len(v) == 2 and v.isalpha():
         return v.upper()
 
-    # Small, language-agnostic-ish mapping for common country names (optional but useful)
     low = v.lower()
     mapping = {
         "austria": "AT", "österreich": "AT", "osterreich": "AT",
@@ -323,7 +336,6 @@ def _norm_key(k: str) -> str:
 
 
 def merge_list_unique(dst: List[Any], src: List[Any]) -> List[Any]:
-    """Merge lists while preserving uniqueness."""
     seen = set(str(x) for x in dst)
     out = list(dst)
     for x in src:
@@ -335,16 +347,30 @@ def merge_list_unique(dst: List[Any], src: List[Any]) -> List[Any]:
 
 
 def ensure_location_obj(existing: Any) -> Dict[str, Any]:
-    """Ensure schema:location is represented as a PostalAddress object."""
     if isinstance(existing, dict):
-        existing.setdefault("@type", "schema:PostalAddress")
+        existing.setdefault("@type", "schema:Place")
+        addr = existing.get("schema:address")
+        if not isinstance(addr, dict):
+            existing["schema:address"] = {"@type": "schema:PostalAddress"}
+        else:
+            addr.setdefault("@type", "schema:PostalAddress")
         return existing
-    return {"@type": "schema:PostalAddress"}
+
+    return {
+        "@type": "schema:Place",
+        "schema:address": {"@type": "schema:PostalAddress"},
+    }
 
 
-def parse_contact_point(text: str) -> Dict[str, Any]:
-    """Parse a contact string into a schema:ContactPoint (generic, deterministic)."""
+def parse_contact_point(text: str, *, debug: bool = False, source: str = "") -> Dict[str, Any]:
     s = str(text).strip()
+
+    prefix = "[CP]"
+    if source:
+        prefix += f"[{source}]"
+
+    if debug:
+        print(f"{prefix} raw={text!r} normalized={s!r}")
 
     email = None
     phone = None
@@ -352,31 +378,43 @@ def parse_contact_point(text: str) -> Dict[str, Any]:
     m = EMAIL_RE.search(s)
     if m:
         email = m.group(0)
+        if debug:
+            print(f"{prefix} EMAIL_RE matched -> {email!r}")
+    elif debug:
+        print(f"{prefix} EMAIL_RE no match")
 
     p = PHONE_RE.search(s)
     if p:
         phone = p.group(1).strip()
+        if debug:
+            print(f"{prefix} PHONE_RE matched -> {phone!r}")
+    elif debug:
+        print(f"{prefix} PHONE_RE no match")
 
-    # Remove extracted email/phone from the working string
     work = s
     if email:
         work = work.replace(email, " ")
     if phone:
         work = work.replace(phone, " ")
 
-    # Remove common labels (generic; do NOT hardcode platform field names)
-    work = re.sub(
+    if debug:
+        print(f"{prefix} after removing email/phone -> {work!r}")
+
+    work2 = re.sub(
         r"\b(contact|email|e-mail|mail|phone|tel|telephone|mobile|móvil)\b\s*:?",
         " ",
         work,
         flags=re.IGNORECASE,
     )
-    work = re.sub(r"\s+", " ", work).strip()
+    work2 = re.sub(r"\s+", " ", work2).strip()
 
-    # If string contains a comma, it is often "Name, role"
-    head = work.split(",", 1)[0].strip()
+    if debug:
+        print(f"{prefix} after removing labels -> {work2!r}")
 
-    # Try to find a plausible person name: 2-4 capitalized tokens, allow accents/hyphens
+    head = work2.split(",", 1)[0].strip()
+    if debug:
+        print(f"{prefix} head candidate (pre-name-heuristic) -> {head!r}")
+
     name = None
     name_match = re.search(
         r"\b([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+(?:[-\s][A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+){1,3})\b",
@@ -384,16 +422,24 @@ def parse_contact_point(text: str) -> Dict[str, Any]:
     )
     if name_match:
         candidate = name_match.group(1).strip()
-        # Avoid garbage labels becoming a name
         if not re.search(r"\b(email|phone|tel|telephone|contact)\b", candidate, re.IGNORECASE):
             name = candidate
+            if debug:
+                print(f"{prefix} name heuristic MATCH -> {name!r}")
+        elif debug:
+            print(f"{prefix} name heuristic produced label-like candidate -> {candidate!r} (ignored)")
+    elif debug:
+        print(f"{prefix} name heuristic NO MATCH")
 
-    # Fallback: use the cleaned head if it doesn't look like a label soup
     if not name:
         cleaned = re.sub(r"[;:\-–—\.]+", " ", head).strip()
         cleaned = re.sub(r"\s+", " ", cleaned)
         if cleaned and len(cleaned) <= 60 and not re.search(r"\b(email|phone|tel|telephone|contact)\b", cleaned, re.IGNORECASE):
             name = cleaned
+            if debug:
+                print(f"{prefix} fallback name -> {name!r}")
+        elif debug:
+            print(f"{prefix} fallback name not used (cleaned={cleaned!r})")
 
     cp: Dict[str, Any] = {"@type": "schema:ContactPoint"}
     if name:
@@ -402,11 +448,14 @@ def parse_contact_point(text: str) -> Dict[str, Any]:
         cp["schema:email"] = email
     if phone:
         cp["schema:telephone"] = phone
+
+    if debug:
+        print(f"{prefix} result -> {cp}")
+
     return cp
 
 
 def merge_contact_points(existing: Optional[Dict[str, Any]], incoming: Dict[str, Any]) -> Dict[str, Any]:
-    """Merge two schema:ContactPoint objects without overwriting good data."""
     if not isinstance(existing, dict):
         existing = {"@type": "schema:ContactPoint"}
     existing.setdefault("@type", "schema:ContactPoint")
@@ -419,15 +468,6 @@ def merge_contact_points(existing: Optional[Dict[str, Any]], incoming: Dict[str,
 
 
 def construct_postal_address_from_sources(payload: Dict[str, Any], sources: List[str]) -> Dict[str, Any]:
-    """
-    Construct schema:PostalAddress from multiple source fields that mapped to schema:address.
-
-    Strategy (deterministic):
-      - Collect all chunks (flatten lists).
-      - Try to detect postal code (4-6 digits) and country code ("(ES)" etc.) from ANY chunk.
-      - Use key hints only in a generic way (contains 'city', 'country', 'street', 'address', ...).
-      - If we still can't place some parts, keep them in schema:streetAddress so we never lose information.
-    """
     addr: Dict[str, Any] = {"@type": "schema:PostalAddress"}
 
     chunks: List[str] = []
@@ -457,7 +497,6 @@ def construct_postal_address_from_sources(payload: Dict[str, Any], sources: List
     if not chunks:
         return addr
 
-    # postalCode + country from chunks
     for src, t in keyed_chunks:
         if "schema:postalCode" not in addr:
             m = POSTCODE_ANY_RE.search(t)
@@ -472,7 +511,6 @@ def construct_postal_address_from_sources(payload: Dict[str, Any], sources: List
         if "schema:addressCountry" not in addr and "country" in _norm_key(src):
             addr["schema:addressCountry"] = normalize_country(t)
 
-    # also accept obvious country names as standalone chunks
     if "schema:addressCountry" not in addr:
         for t in chunks:
             c = normalize_country(t)
@@ -480,7 +518,6 @@ def construct_postal_address_from_sources(payload: Dict[str, Any], sources: List
                 addr["schema:addressCountry"] = c
                 break
 
-    # locality from key hints first
     if "schema:addressLocality" not in addr:
         for src, t in keyed_chunks:
             nk = _norm_key(src)
@@ -490,7 +527,6 @@ def construct_postal_address_from_sources(payload: Dict[str, Any], sources: List
                     addr["schema:addressLocality"] = city
                     break
 
-    # heuristic locality fallback: choose a non-numeric, non-country chunk
     if "schema:addressLocality" not in addr:
         country = addr.get("schema:addressCountry")
         for t in chunks:
@@ -503,7 +539,6 @@ def construct_postal_address_from_sources(payload: Dict[str, Any], sources: List
             addr["schema:addressLocality"] = t.strip()
             break
 
-    # streetAddress: prefer street/address keys; else keep ALL chunks to avoid loss
     street_parts: List[str] = []
     for src, t in keyed_chunks:
         nk = _norm_key(src)
@@ -522,7 +557,6 @@ def construct_postal_address_from_sources(payload: Dict[str, Any], sources: List
 
 
 def construct_availability_from_sources(payload: Dict[str, Any], sources: List[str]) -> Dict[str, Any]:
-    """Construct vms:VolunteerAvailability from multiple source fields that mapped to vms:availability."""
     out: Dict[str, Any] = {"@type": "vms:VolunteerAvailability"}
 
     for src in sources:
@@ -531,19 +565,16 @@ def construct_availability_from_sources(payload: Dict[str, Any], sources: List[s
             continue
         nk = _norm_key(src)
 
-        # days
         if ("day" in nk or "weekday" in nk) and "vms:daysOfWeek" not in out:
             if isinstance(v, (list, tuple, set)):
                 out["vms:daysOfWeek"] = [str(x).strip() for x in v if str(x).strip()]
             elif isinstance(v, str):
                 out["vms:daysOfWeek"] = extract_weekdays(v)
 
-        # start time
         if ("start" in nk and "time" in nk) and "vms:startTime" not in out:
             if isinstance(v, str) and TIME_RE.match(v.strip()):
                 out["vms:startTime"] = v.strip()
 
-        # end time
         if ("end" in nk and "time" in nk) and "vms:endTime" not in out:
             if isinstance(v, str) and TIME_RE.match(v.strip()):
                 out["vms:endTime"] = v.strip()
@@ -553,7 +584,6 @@ def construct_availability_from_sources(payload: Dict[str, Any], sources: List[s
 def _default_for_expected_type(expected_type: str) -> Any:
     t = (expected_type or "").lower()
 
-    # Lists
     if "list" in t:
         return []
     if t in ("idlist",):
@@ -561,49 +591,38 @@ def _default_for_expected_type(expected_type: str) -> Any:
     if t in ("textlist",):
         return []
 
-    # Objects / nested
     if t in ("object", "postaladdress", "contactpoint", "organization"):
         return None  # keep null unless you want {}. (I recommend null for "no data")
 
-    # Scalars
     if t in ("text", "string", "date", "time", "integer", "number", "uri"):
         return None
 
-    # Fallback
     return None
 
 
 def finalize_and_order_canonical(out: Dict[str, Any], *, entity: str) -> Dict[str, Any]:
-    """
-    - Ensure all canonical properties exist (typed defaults)
-    - Ensure forbidden top-level keys are not present (e.g., schema:contactPoint)
-    - Return a NEW dict with stable ordering matching the thesis
-    """
+
     from schema_mapping_common.data_structures import get_canonical_properties
 
-    # 1) Fill missing canonical properties
     for p in get_canonical_properties(entity):
         out.setdefault(p.key, _default_for_expected_type(p.expected_type))
 
-    # 2) Remove forbidden top-level keys (contactPoint must be nested)
     for k in FORBIDDEN_TOPLEVEL_KEYS:
         if k in out:
             out.pop(k, None)
 
-    # 3) Build ordered output
     if entity == "Volunteer":
         order = ORDER_VOLUNTEER
     elif entity == "Opportunity":
         order = ORDER_OPPORTUNITY
     else:
-        order = ["@context", "@type", "@id"]  # fallback
+        order = ["@context", "@type", "@id"]
 
     ordered: Dict[str, Any] = {}
     for k in order:
         if k in out:
             ordered[k] = out.get(k)
 
-    # 4) Append remaining keys not in the order list (keeps backward compatibility)
     for k, v in out.items():
         if k not in ordered:
             ordered[k] = v

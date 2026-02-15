@@ -1,8 +1,3 @@
-"""
-data_structures.py
-==================
-Shared data structures for schema mapping.
-"""
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
@@ -87,14 +82,13 @@ CANONICAL_PROPERTIES_REGISTRY: Dict[str, List[CanonicalProperty]] = {
         CanonicalProperty("vms:daysOfWeek", "Days of week", "Days when the opportunity happens", "TextList", "Opportunity"),
         CanonicalProperty("vms:requiresSkill", "Requires skill", "Skills required to participate", "TextList", "Opportunity"),
         CanonicalProperty("vms:visibility", "Visibility", "Sharing visibility (e.g., CrossPlatform)", "Text", "Opportunity"),
+        CanonicalProperty("vms:durationHours", "Duration", "Hours when the opportunity happens", "Text", "Opportunity"),
     ]
 }
 
-# Helper functions to maintain backward compatibility
 def get_canonical_properties(entity: str) -> List[CanonicalProperty]:
     """Get canonical properties for a specific entity."""
     return CANONICAL_PROPERTIES_REGISTRY.get(entity, [])
 
-# Backward compatibility aliases
 CANONICAL_PROPERTIES_VOLUNTEER = CANONICAL_PROPERTIES_REGISTRY["Volunteer"]
 CANONICAL_PROPERTIES_OPPORTUNITY = CANONICAL_PROPERTIES_REGISTRY["Opportunity"]

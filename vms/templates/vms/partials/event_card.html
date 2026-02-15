@@ -1,22 +1,25 @@
+{# templates/vms/_event_card.html (or whatever your include filename is) #}
 {% load static %}
 
-<div class="card mb-4 shadow-sm {{ provider_tint }}" id="event-{{ e.id }}">
+<div class="card mb-4 shadow-sm {{ provider_tint }}" id="event-{{ e.uid|default:e.id }}">
   <div class="row g-0">
     <div class="col-md-4">
-      <img src="{% static e.image_url %}" class="img-fluid rounded-start h-100 object-fit-cover" alt="{{ e.name }}">
+      <img
+        src="{% static e.image_url|default:'vms/images/event_default.jpg' %}"
+        class="img-fluid rounded-start h-100 object-fit-cover"
+        alt="{{ e.name }}"
+      >
     </div>
 
     <div class="col-md-8">
       <div class="card-body">
 
-        <!-- Event title with label -->
         <h3 class="card-title h5 d-flex align-items-center gap-2">
           <span class="text-muted">Title:</span> {{ e.name }}
 
-          {% if e.isShared %}
-            <span class="badge bg-primary">Data Space</span>
-          {% else %}
-            <span class="badge bg-secondary">Local Only</span>
+          {# ✅ Only show federation badge for remote (portal feed) #}
+          {% if e.is_remote %}
+            <span class="badge bg-info text-dark">Remote feed</span>
           {% endif %}
 
           {% if e.isFinished %}
@@ -24,35 +27,39 @@
           {% endif %}
         </h3>
 
-        {% if e.ds_endpoint %}
-          <p class="mb-1"><small class="text-muted">
-            Endpoint: <code>{{ e.ds_endpoint }}</code>
-          </small></p>
+        {% if e.ds_endpoint and e.is_remote %}
+          <p class="mb-1">
+            <small class="text-muted">
+              Endpoint: <code>{{ e.ds_endpoint }}</code>
+            </small>
+          </p>
         {% endif %}
 
-        <!-- Organization -->
-        <p class="fw-light">
-            <strong>Organization:</strong> {{ e.organization.name }}
+        <p class="fw-light mb-2">
+          <strong>Organization:</strong>
+          {{ e.org_name|default:e.organization.name|default:"-" }}
         </p>
 
-        <!-- Description -->
-        <p class="text-muted">
+
+
+
+        {% if e.description %}
+          <p class="text-muted">
             <strong>Description:</strong> {{ e.description }}
-        </p>
+          </p>
+        {% endif %}
 
         {% if show_details %}
           <div class="row mt-3">
-
-            <!-- Left column: duration + location -->
-            <div class="col-sm-4">
-              <p><i class="bi bi-clock me-2"></i><strong>Time:</strong> {{ e.duration_hours }}h</p>
-              <p><i class="bi bi-geo-alt me-2"></i><strong>Location:</strong> {{ e.location }}</p>
+            <div class="col-sm-6">
+              <p><i class="bi bi-clock me-2"></i><strong>Duration:</strong> {{ e.duration_hours }}h</p>
+              <p><i class="bi bi-geo-alt me-2"></i><strong>Meeting Point:</strong> {{ e.location|default:"-" }}</p>
             </div>
 
-            <!-- Right column: registered + skills -->
-            <div class="col-sm-8">
-              <p><i class="bi bi-people me-2"></i>
-                <strong>Registered:</strong> {{ e.registered_volunteers }} volunteers
+            <div class="col-sm-6">
+              <p>
+                <i class="bi bi-people me-2"></i>
+                <strong>Volunteers:</strong> {{ e.registered_volunteers|default:1 }} / {{ e.max_attendee_capacity }}
               </p>
 
               <p>
@@ -72,47 +79,55 @@
             </div>
           </div>
         {% endif %}
+              {% with org_label=e.org_name|default:e.organization.name|default:"" %}
+          {% if org_label|lower == "demorg" %}
+            <p class="mb-2">
+              <i class="bi bi-shirt me-2"></i><strong>T-Shirt:</strong> M
+            </p>
+          {% endif %}
+        {% endwith %}
 
-        <!-- Action buttons -->
         <div class="d-flex gap-2">
+          {% if e.is_remote %}
+            <button class="btn btn-secondary btn-sm" disabled>
+              <i class="bi bi-lock me-1"></i> Remote (read-only)
+            </button>
+          {% else %}
+            <form method="post"
+                  action="{% if e.is_registered %}{% url 'vms:unregister_event' volunteer.id e.id %}{% else %}{% url 'vms:register_event' volunteer.id e.id %}{% endif %}">
+              {% csrf_token %}
 
-          <form method="post"
-                action="{% if e.is_registered %}{% url 'vms:unregister_event' volunteer.id e.id %}{% else %}{% url 'vms:register_event' volunteer.id e.id %}{% endif %}">
-            {% csrf_token %}
-
-            {% if e.is_registered %}
-              <button class="btn btn-danger btn-sm" {% if e.isFinished %}disabled{% endif %}>
-                <i class="bi bi-x-circle me-1"></i> Unregister
-              </button>
-
-            {% else %}
-              {% if e.can_register and not e.isFinished %}
-                <button class="btn btn-primary btn-sm">
-                  <i class="bi bi-plus-circle me-1"></i> Register
+              {% if e.is_registered %}
+                <button class="btn btn-danger btn-sm" {% if e.isFinished %}disabled{% endif %}>
+                  <i class="bi bi-x-circle me-1"></i> Unregister
                 </button>
-
               {% else %}
-                <button class="btn btn-secondary btn-sm" disabled>
-                  <i class="bi bi-lock me-1"></i> Cannot Register
-                </button>
-
-                {% if e.isFinished %}
-                  <small class="text-danger d-block mt-1">Event is finished</small>
+                {% if e.can_register and not e.isFinished %}
+                  <button class="btn btn-primary btn-sm">
+                    <i class="bi bi-plus-circle me-1"></i> Register
+                  </button>
                 {% else %}
-                  <small class="text-warning d-block mt-1">Missing required skills</small>
+                  <button class="btn btn-secondary btn-sm" disabled>
+                    <i class="bi bi-lock me-1"></i> Cannot Register
+                  </button>
+
+                  {% if e.isFinished %}
+                    <small class="text-danger d-block mt-1">Event is finished</small>
+                  {% else %}
+                    <small class="text-warning d-block mt-1">Missing required skills</small>
+                  {% endif %}
                 {% endif %}
               {% endif %}
-            {% endif %}
-          </form>
-
-{#          {% if volunteer.is_manager and not e.isFinished %}#}
-        {% if volunteer and not e.isFinished %}
-            <form method="post" action="{% url 'vms:finish_event' volunteer.id e.id %}">
-              {% csrf_token %}
-              <button class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-flag-checkered me-1"></i> Mark Finished
-              </button>
             </form>
+
+            {% if volunteer and not e.isFinished %}
+              <form method="post" action="{% url 'vms:finish_event' volunteer.id e.id %}">
+                {% csrf_token %}
+                <button class="btn btn-outline-secondary btn-sm">
+                  <i class="bi bi-flag-checkered me-1"></i> Mark Finished
+                </button>
+              </form>
+            {% endif %}
           {% endif %}
         </div>
 

@@ -1,0 +1,60 @@
+{% extends "portal/base.html" %}
+
+{% block content %}
+  <p class="muted">
+    <a href="{% url 'portal_home' %}">← Back to directory</a>
+  </p>
+
+  <h1>Opportunity</h1>
+  <div class="muted">{{ opportunity_id }}</div>
+
+  <div class="muted" style="margin-top:6px;">
+    Provider: {{ provider.name }} ({{ provider.platform_key }})
+  </div>
+
+  <hr style="margin:24px 0; border:none; border-top:1px solid #eee;">
+
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+    <h2 style="margin:0;">Opportunity description (JSON-LD)</h2>
+    <button id="copyBtn" type="button" class="btn">Copy JSON-LD</button>
+  </div>
+
+  {{ opportunity_jsonld|json_script:"opportunity-jsonld" }}
+
+  <pre id="jsonBox"
+       style="margin-top:12px; padding:14px; background:#0b1020; color:#e5e7eb; border-radius:12px; overflow:auto; border:1px solid rgba(255,255,255,0.08); white-space:pre-wrap;"></pre>
+
+  <script type="application/ld+json" id="jsonldScript"></script>
+
+  <script>
+    (function () {
+      const data = JSON.parse(
+        document.getElementById("opportunity-jsonld").textContent
+      );
+
+      const pretty = JSON.stringify(data, null, 2);
+
+      document.getElementById("jsonBox").textContent = pretty;
+      document.getElementById("jsonldScript").textContent = pretty;
+
+      const btn = document.getElementById("copyBtn");
+
+      btn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(pretty);
+          btn.textContent = "Copied ✓";
+          setTimeout(() => (btn.textContent = "Copy JSON-LD"), 1200);
+        } catch (e) {
+          const ta = document.createElement("textarea");
+          ta.value = pretty;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+          btn.textContent = "Copied ✓";
+          setTimeout(() => (btn.textContent = "Copy JSON-LD"), 1200);
+        }
+      });
+    })();
+  </script>
+{% endblock %}

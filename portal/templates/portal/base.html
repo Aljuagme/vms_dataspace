@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Federated Portal</title>
+
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; background:#fff; }
+    header { padding: 16px 22px; background:#111; color:#fff; display:flex; gap:14px; align-items:center; }
+    header a { color:#fff; text-decoration:none; opacity:.9; }
+    header a:hover { opacity:1; }
+    main { padding: 22px; max-width: 1100px; margin: 0 auto; }
+    .card { background:#f5f6f7; border-radius: 14px; padding: 14px; margin: 12px 0; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    input { width: 100%; padding: 10px; border-radius: 12px; border: 1px solid #ddd; }
+    button { padding: 10px 14px; border-radius: 12px; border: 1px solid #111; background:#111; color:#fff; cursor:pointer; }
+    pre { background:#fff; border-radius: 12px; padding: 12px; overflow:auto; }
+    .muted { color:#666; }
+    .pill { display:inline-block; padding: 3px 10px; border-radius: 999px; background:#fff; border:1px solid #ddd; margin-right:6px; font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <strong>Federated VMS Portal</strong>
+  <a href="/">Back to Demorg</a>
+</header>
+
+<main>
+  {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>

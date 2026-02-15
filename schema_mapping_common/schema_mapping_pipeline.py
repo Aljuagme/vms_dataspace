@@ -1,12 +1,3 @@
-"""
-schema_mapping_pipeline.py
-=========================
-Unified mapping pipeline for BOTH entities (Volunteer + Opportunity).
-
-Key idea:
-- Mapping engine decides: source fields -> subgroup (schema:address / vms:availability / schema:contactPoint)
-- Subgroup constructors (deterministic) decide: subgroup slot filling WITHOUT re-running similarity/LLM
-"""
 
 from __future__ import annotations
 
@@ -35,16 +26,15 @@ from schema_mapping_common.utilities import (
     ensure_location_obj,
     merge_list_unique,
     parse_contact_point,
-    merge_contact_points, finalize_and_order_canonical,
+    merge_contact_points, finalize_and_order_canonical, parse_postal_address, parse_place_and_address,
 )
 
 from schema_mapping_common.scoring import SemanticEncoder
 from schema_mapping_common.mapping_engine import propose_mappings_generic, MappingEngineConfig
 
 
-# ============================================================
-# Deterministic IDs
-# ============================================================
+IGNORED_SOURCE_FIELDS = {"tshirt_size"}
+
 
 def deterministic_volunteer_id(payload: Dict[str, Any]) -> str:
     mail = str(payload.get("mail") or payload.get("email") or "").strip()
@@ -60,10 +50,6 @@ def deterministic_opportunity_id(payload: Dict[str, Any], org_id: str) -> str:
     slug = hashlib.sha1(base).hexdigest()[:12]
     return f"https://vms.example.org/opportunities/{slug}"
 
-
-# ============================================================
-# Small, entity-local transforms
-# ============================================================
 
 CAPACITY_IN_TEXT_RE = re.compile(
     r"\bmax(?:imum)?\s*(\d{1,4})\b|\bmax\.\s*(\d{1,4})\b|\b(\d{1,4})\s*(?:participants|people|volunteers|attendees)\b",
@@ -118,10 +104,6 @@ def extract_required_skills_from_anchored_segment(segment: str) -> List[str]:
     return uniq[:10]
 
 
-# ============================================================
-# Catalog building (onboarding output)
-# ============================================================
-
 def _proposal_best_score(p: MappingProposal) -> float:
     if p.ranked:
         return float(p.ranked[0].combined)
@@ -129,14 +111,7 @@ def _proposal_best_score(p: MappingProposal) -> float:
 
 
 def build_volunteer_catalog(org_id: str, proposals: List[MappingProposal]) -> MappingCatalog:
-    """
-    Build mapping catalog for Volunteer.
 
-    Key idea:
-    - Aggregate all sources that mapped to schema:address into a SINGLE rule.
-    - Aggregate all sources that mapped to vms:availability into a SINGLE rule.
-    - For the rest, keep 1→1 mapping (pick best source if duplicates exist).
-    """
     by_target: Dict[str, List[MappingProposal]] = {}
     for p in proposals:
         if p.best_target is None:
@@ -169,39 +144,45 @@ def build_volunteer_catalog(org_id: str, proposals: List[MappingProposal]) -> Ma
     return MappingCatalog(org_id=org_id, entity="Volunteer", rules=rules)
 
 
-def build_opportunity_catalog(org_id: str, proposals: List[MappingProposal], org_name: str) -> MappingCatalog:
-    rules: List[MappingRule] = []
+def build_opportunity_catalog(*, org_id: str, org_name: str, proposals: List[MappingProposal], atomic_only: bool=False, blocked_sources: Optional[List[str]]=None):
 
-    rules.append(
-        MappingRule(
-            sources=[],
-            target_key="schema:organizer",
-            transform="constant",
-            constant={"@type": "schema:Organization", "schema:name": org_name},
-        )
-    )
-    rules.append(
-        MappingRule(
-            sources=[],
-            target_key="vms:visibility",
-            transform="constant_if_missing",
-            constant="CrossPlatform",
-        )
-    )
+    blocked_sources = set(blocked_sources or [])
+
+    rules = []
+    rules.append(MappingRule(
+        sources=[],
+        target_key="schema:organizer",
+        transform="constant",
+        constant={"@type": "schema:Organization", "schema:name": org_name},
+    ))
+    rules.append(MappingRule(
+        sources=[],
+        target_key="vms:visibility",
+        transform="constant_if_missing",
+        constant="CrossPlatform",
+    ))
 
     for p in proposals:
         if p.status in ("REJECTED", "COMPOSITE"):
             continue
-        if p.best_target is None:
+        if not p.best_target:
             continue
-        rules.append(MappingRule(sources=[p.source_path], target_key=p.best_target.key, transform="identity_or_composite"))
+
+        if atomic_only:
+            if "::seg" in p.source_path:
+                print(f"[BOOTSTRAP CATALOG] Skipping '{p.source_path}' for CREATION OF MAPPING CATALOG (composite segment).")
+                continue
+            if p.source_path in blocked_sources:
+                print(f"[BOOTSTRAP CATALOG] Skipping '{p.source_path}' for CREATION OF MAPPING CATALOG (blocked).")
+                continue
+
+        rules.append(MappingRule(
+            sources=[p.source_path],
+            target_key=p.best_target.key,
+            transform="identity_or_composite",
+        ))
 
     return MappingCatalog(org_id=org_id, entity="Opportunity", rules=rules)
-
-
-# ============================================================
-# Catalog application (runtime output)
-# ============================================================
 
 def _get_by_dotted_path(obj: Any, dotted: str) -> Any:
     cur = obj
@@ -240,7 +221,6 @@ def apply_volunteer_catalog(payload: Dict[str, Any], catalog: MappingCatalog) ->
             continue
 
         if rule.transform == "postal_from_sources":
-            # IMPORTANT: never lose info -> fallback keeps chunks under streetAddress
             out["schema:address"] = construct_postal_address_from_sources(payload, rule.sources)
             continue
 
@@ -248,13 +228,11 @@ def apply_volunteer_catalog(payload: Dict[str, Any], catalog: MappingCatalog) ->
             out["vms:availability"] = construct_availability_from_sources(payload, rule.sources)
             continue
 
-    # Name synthesis
     given = str(out.get("schema:givenName") or "").strip()
     family = str(out.get("schema:familyName") or "").strip()
     if given or family:
         out["schema:name"] = (given + " " + family).strip()
 
-    # If availability still missing but we have explicit time, create it
     if "vms:availability" not in out:
         st = payload.get("availability_start_time")
         if isinstance(st, str) and TIME_RE.match(st.strip()):
@@ -268,12 +246,13 @@ def apply_volunteer_catalog(payload: Dict[str, Any], catalog: MappingCatalog) ->
     return out
 
 
-def apply_opportunity_catalog(payload: Dict[str, Any], catalog: MappingCatalog, org_name: str) -> Dict[str, Any]:
+def apply_opportunity_catalog(payload: Dict[str, Any], catalog: MappingCatalog, org_name: str, *, debug: bool=False) -> Dict[str, Any]:
     out: Dict[str, Any] = {
         "@context": {"schema": "https://schema.org/", "vms": "https://example.org/vms#", "esco": "https://data.europa.eu/esco/skill/"},
         "@type": ["schema:Event", "vms:Opportunity"],
         "@id": deterministic_opportunity_id(payload, catalog.org_id),
     }
+    debug = False
 
     def get_source_value(source_path: str) -> Any:
         if "::seg" not in source_path:
@@ -348,15 +327,35 @@ def apply_opportunity_catalog(payload: Dict[str, Any], catalog: MappingCatalog, 
             continue
 
         if tgt == "schema:location":
-            loc_obj = ensure_location_obj(out.get("schema:location"))
-            if isinstance(val, str):
-                locality = val.strip()
-                if len(locality) > 25:
-                    maybe = try_parse_locality_from_text(locality)
-                    if maybe:
-                        locality = maybe
-                loc_obj.setdefault("schema:addressLocality", locality)
-                out["schema:location"] = loc_obj
+            if debug:
+                print(f"[APPLY] schema:location <= {rule.sources[0]}  val={val!r}")
+
+            place = ensure_location_obj(out.get("schema:location"))
+
+            if isinstance(val, str) and val.strip():
+                parsed_place = parse_place_and_address(val.strip())
+
+                if parsed_place.get("schema:name"):
+                    place.setdefault("schema:name", parsed_place["schema:name"])
+
+                addr = place.get("schema:address")
+                if not isinstance(addr, dict):
+                    addr = {"@type": "schema:PostalAddress"}
+                addr.setdefault("@type", "schema:PostalAddress")
+
+                parsed_addr = parsed_place.get("schema:address", {})
+                if isinstance(parsed_addr, dict):
+                    for k, v in parsed_addr.items():
+                        if k == "@type":
+                            continue
+                        addr.setdefault(k, v)
+
+                place["schema:address"] = addr
+
+                if debug:
+                    print("[LOCATION] parsed place =", place)
+
+            out["schema:location"] = place
             continue
 
         if tgt == "vms:daysOfWeek":
@@ -387,16 +386,31 @@ def apply_opportunity_catalog(payload: Dict[str, Any], catalog: MappingCatalog, 
             continue
 
         if tgt == "schema:contactPoint":
-            # IMPORTANT: do not overwrite; merge info across segments
+            if debug:
+                print(f"[APPLY] schema:contactPoint <= {rule.sources[0]}  val={val!r}")
+
             organizer = out.get("schema:organizer")
             if not isinstance(organizer, dict):
                 organizer = {"@type": "schema:Organization", "schema:name": org_name}
 
-            existing_cp = organizer.get("schema:contactPoint") if isinstance(organizer, dict) else None
-            incoming = parse_contact_point(str(val))
+            existing_cp = organizer.get("schema:contactPoint")
+            if not isinstance(existing_cp, dict):
+                existing_cp = None
 
-            organizer["schema:contactPoint"] = merge_contact_points(existing_cp if isinstance(existing_cp, dict) else None, incoming)
+            incoming_cp = parse_contact_point(val) if isinstance(val, str) else {"@type": "schema:ContactPoint"}
+
+            merged = merge_contact_points(
+                existing_cp,
+                incoming_cp
+            )
+
+            organizer["schema:contactPoint"] = merged
             out["schema:organizer"] = organizer
+
+            if debug:
+                print("[CONTACT] incoming =", incoming_cp)
+                print("[CONTACT] merged   =", merged)
+
             continue
 
         if tgt == "vms:visibility":
@@ -410,6 +424,23 @@ def apply_opportunity_catalog(payload: Dict[str, Any], catalog: MappingCatalog, 
     out["schema:location"] = ensure_location_obj(out.get("schema:location"))
     out.setdefault("vms:requiresSkill", [])
     out.setdefault("vms:daysOfWeek", [])
+
+    raw_desc = payload.get("description")
+    if isinstance(raw_desc, str) and raw_desc.strip():
+        cp = parse_contact_point(raw_desc)
+
+        if cp.get("schema:email") or cp.get("schema:telephone") or cp.get("schema:name"):
+            organizer = out.get("schema:organizer")
+            if not isinstance(organizer, dict):
+                organizer = {"@type": "schema:Organization", "schema:name": org_name}
+
+            existing_cp = organizer.get("schema:contactPoint")
+            organizer["schema:contactPoint"] = merge_contact_points(
+                existing_cp if isinstance(existing_cp, dict) else None,
+                cp
+            )
+            out["schema:organizer"] = organizer
+
 
     out = finalize_and_order_canonical(out, entity="Opportunity")
     return out
@@ -434,6 +465,8 @@ def start_everything(
         payload_path = f"payloads/{entity.lower()}.json"
 
     payload = load_json_payload(payload_path)
+
+    payload = {k: v for k, v in payload.items() if k not in IGNORED_SOURCE_FIELDS}
 
     print("\n" + "=" * width)
     print(f"LOCAL INPUT JSON ({entity})")

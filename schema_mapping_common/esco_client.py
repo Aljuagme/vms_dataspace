@@ -1,4 +1,3 @@
-# schema_mapping_common/esco_client.py
 from __future__ import annotations
 
 import requests
@@ -18,7 +17,7 @@ class EscoClient:
     Minimal ESCO API client (online retrieval mode).
 
     ESCO web services provide skill concepts identified by URIs.
-    Docs: ESCO Web Services API + REST docs (HAL JSON).
+    Docs: ESCO Web Services API + REST docs.
     """
 
     def __init__(
@@ -46,10 +45,6 @@ class EscoClient:
     def search_skills(self, text: str, *, limit: int = 8, lang: str = "en") -> List[EscoSkillHit]:
         """
         Search ESCO skills by free text.
-
-        ESCO returns HAL JSON. We extract candidate URIs + titles from common fields:
-        - _embedded results arrays (varies by endpoint)
-        - _links entries containing 'uri' and 'title'
         """
         q = (text or "").strip()
         if not q:

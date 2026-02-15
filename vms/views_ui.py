@@ -1,34 +1,23 @@
-import hashlib
+import json
 
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponseBadRequest
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.csrf import csrf_exempt, csrf_protect, ensure_csrf_cookie
+from django.contrib import messages
+from django.utils import timezone
 
 from vms.services.decorators import volunteer_login_required
-from .forms import LoginForm
-import json
-from django.views.decorators.csrf import csrf_exempt
-
-from django.shortcuts import get_object_or_404, redirect
-from django.contrib import messages
-
-from .events import annotate_event
-from .services.logging import log_event
-
-from django.utils import timezone
-from vms.services.dataspace import (
-    edc_register_asset_and_offer,
-    map_local_event_to_shared,
-    build_event_jsonld,
-    notify_trust_anchor_and_members, log_volunteer_join, log_volunteer_cancel,
-)
-
-from .models import Organization, Volunteer, VolunteerEvent, Skill, Certificate, LocalResource
-
 from vms.interop.services import on_local_event_created_run_pipelines
 
-
-# ---------------- UI Views ----------------
+from .forms import LoginForm
+from .events import annotate_event
+from .mapping_bootstrap import (
+    ensure_draft_opportunity_catalog_for_review,
+    save_opportunity_catalog_from_review,
+    has_active_catalog,
+)
+from .models import Organization, Volunteer, VolunteerEvent, CertificateIssue, CertificateLog
 
 def root_redirect(request):
     vid = request.session.get("volunteer_id")
@@ -36,9 +25,11 @@ def root_redirect(request):
         return redirect("vms:dashboard", vid=vid)
     return redirect("vms:login")
 
+
 @volunteer_login_required
 def index(request):
     return render(request, "vms/index.html")
+
 
 def login_view(request):
     if request.method == "POST":
@@ -56,24 +47,24 @@ def login_view(request):
         form = LoginForm()
     return render(request, "vms/login.html", {"form": form})
 
+
 def logout_view(request):
     request.session.flush()
     return redirect("vms:login")
 
+
 @volunteer_login_required
 def ranking_view(request):
-    volunteer_id = request.session.get('volunteer_id')
-
+    volunteer_id = request.session.get("volunteer_id")
     if not volunteer_id:
-        return redirect('vms:login')
+        return redirect("vms:login")
 
     try:
         volunteer = Volunteer.objects.get(id=volunteer_id)
     except Volunteer.DoesNotExist:
         messages.error(request, "Volunteer not found.")
-        return redirect('vms:login')
+        return redirect("vms:login")
 
-    # Dummy ranking list
     dummy_ranking = [
         {"name": "Rick", "skills": "Organization, Communication", "organization": "Helping Hands", "hours": 120},
         {"name": "You", "skills": "First Aid, Lead a team",
@@ -81,62 +72,73 @@ def ranking_view(request):
          "hours": volunteer.total_hours()},
         {"name": "Beck", "skills": "First Aid, Disaster Response", "organization": "Red Cross", "hours": 90},
         {"name": "Maria", "skills": "Teaching, Creativity", "organization": "EduCare", "hours": 85},
-
         {"name": "Mark", "skills": "Cooking, Teamwork", "organization": "Food for All", "hours": 60},
     ]
 
-    context = {
+    return render(request, "vms/ranking.html", {
         "volunteer": volunteer,
         "ranking": dummy_ranking,
-    }
-    return render(request, "vms/ranking.html", context)
+    })
+
+
 @volunteer_login_required
 def dashboard_view(request, vid):
     v = get_object_or_404(Volunteer, pk=vid)
     org = v.organization
 
-    # --- collect events ---
-    org_events = org.events.all() if org else VolunteerEvent.objects.none()
-
-    if org and org.member_ds:
-        # Add shared events from other orgs in Data Space
-        ds_events = VolunteerEvent.objects.filter(
-            isShared=True,
-            organization__member_ds=True
-        ).exclude(organization=org)
-        all_events = org_events | ds_events
-    else:
-        all_events = org_events
-
     registered_ids = set(v.events.values_list("id", flat=True))
 
-    # Annotate
-    all_events = [annotate_event(e, v, registered_ids) for e in all_events]
+    registered_qs = v.events.select_related("organization").all()
 
-    # Split into registered/unregistered
-    registered_events = [e for e in all_events if e.is_registered]
-    unregistered_events = [e for e in all_events if not e.is_registered]
+    if not (org and org.member_ds):
+        registered_qs = registered_qs.filter(organization=org)
 
-    volunteers = org.volunteers.all() if org else Volunteer.objects.none()
+    registered_cards = []
+    for ev in registered_qs:
+        card = annotate_event(ev, v, registered_ids)
 
-    # Quick stats
-    registered_active = [e for e in registered_events if not e.isFinished]
-    registered_completed = [e for e in registered_events if e.isFinished]
+        if org and org.platform_key == "demorg" and getattr(ev, "organization_id", None) == getattr(org, "id", None):
+            try:
+                card.tshirt_size = getattr(ev, "tshirt_size", "") or ""
+            except Exception:
+                pass
+
+        registered_cards.append(card)
+
+    registered_active = [e for e in registered_cards if not e.isFinished]
+    registered_completed = [e for e in registered_cards if e.isFinished]
+
+    org_events = list(org.events.all()) if org else []
+    org_cards = []
+
+    for ev in org_events:
+        card = annotate_event(ev, v, registered_ids)
+
+        if org and org.platform_key == "demorg":
+            try:
+                card.tshirt_size = getattr(ev, "tshirt_size", "") or ""
+            except Exception:
+                pass
+
+        org_cards.append(card)
+
+    unregistered_events = [e for e in org_cards if not e.is_registered and not e.isFinished]
 
     registered_events_count = len(registered_active)
     completed_events_count = len(registered_completed)
     hours_volunteered = sum(e.duration_hours for e in registered_completed)
 
-    # Milestone logic (example: 100 hours = milestone)
     milestone_target = 100
     progress_percent = min(int((hours_volunteered / milestone_target) * 100), 100)
     remaining_percent = max(0, 100 - progress_percent)
     milestone_reached = hours_volunteered >= milestone_target
 
+    volunteers = org.volunteers.all() if org else Volunteer.objects.none()
+
     return render(request, "vms/dashboard.html", {
         "volunteer": v,
         "events_registered": registered_active,
-        "events_unregistered": [e for e in unregistered_events if not e.isFinished],
+        "events_unregistered": unregistered_events,
         "events_completed": registered_completed,
         "volunteers": volunteers,
         "registered_events_count": registered_events_count,
@@ -146,44 +148,75 @@ def dashboard_view(request, vid):
         "remaining_percent": remaining_percent,
         "milestone_target": milestone_target,
         "milestone_reached": milestone_reached,
-
     })
 
 
 @volunteer_login_required
 def events_page(request, vid):
+
     v = get_object_or_404(Volunteer, pk=vid)
     org = v.organization
 
-    # --- collect events ---
-    org_events = org.events.all() if org else VolunteerEvent.objects.none()
-
-    if org and org.member_ds:
-        ds_events = VolunteerEvent.objects.filter(
-            isShared=True, organization__member_ds=True
-        ).exclude(organization=org)
-        # if ds_events.exists():
-            # log_event("FederatedDiscovery",
-            #           f"Discovered {ds_events.count()} shared events from other orgs in Data Space for {org.name}")
-        all_events = org_events | ds_events
-    else:
-        all_events = org_events
-
+    org_events = list(org.events.all()) if org else []
     registered_ids = set(v.events.values_list("id", flat=True))
 
-    # Annotate all events and filter out finished
-    all_events = [annotate_event(e, v, registered_ids) for e in all_events if not e.isFinished]
+    cards = []
+    for ev in org_events:
+        if ev.isFinished:
+            continue
+
+        card = annotate_event(ev, v, registered_ids)
+
+        if org and org.platform_key == "demorg":
+            try:
+                card.tshirt_size = getattr(ev, "tshirt_size", "") or ""
+            except Exception:
+                pass
+
+        cards.append(card)
 
     return render(request, "vms/events.html", {
         "volunteer": v,
-        "events": all_events,
+        "events": cards,
     })
 
-def _pretty(data):
-    return json.dumps(data, indent=2, ensure_ascii=False)
+
+
+def _event_payload_from_post(post) -> dict:
+    title = (post.get("title") or "").strip()
+    description = (post.get("description") or "").strip()
+    meeting_point = (post.get("meeting_point") or "").strip()
+    duration = post.get("duration")
+    max_volunteers = post.get("max_volunteers")
+    tshirt_size = (post.get("tshirt_size") or "").strip()
+
+    payload = {
+        "title": title,
+        "description": description,
+        "meeting_point": meeting_point,
+        "duration_hours": int(duration) if str(duration).strip().isdigit() else 1,
+        "n_volunteers": int(max_volunteers) if str(max_volunteers).strip().isdigit() else 0,
+        "tshirt_size": tshirt_size,
+    }
+    return payload
+
+
+def _defaults_from_payload(payload: dict) -> dict:
+    return {
+        "name": payload.get("title", ""),
+        "description": payload.get("description", ""),
+        "location": payload.get("meeting_point", ""),
+        "duration": payload.get("duration_hours", 1),
+        "max_attendee_capacity": payload.get("n_volunteers", 0),
+        "tshirt_size": payload.get("tshirt_size", ""),
+    }
+
 
 @volunteer_login_required
+@ensure_csrf_cookie
 def create_event(request):
+    from .pipeline_runtime import run_opportunity_pipeline_missing_fields_only
+
     volunteer_id = request.session.get("volunteer_id")
     if not volunteer_id:
         return redirect("vms:login")
@@ -194,153 +227,133 @@ def create_event(request):
         messages.error(request, "Only managers can create events.")
         return redirect("vms:dashboard", volunteer_id)
 
-    if request.method == "POST":
-        name = request.POST.get("name")
-        description = request.POST.get("description")
-        location = request.POST.get("location")
-        duration = request.POST.get("duration")
-        skills = request.POST.get("skills", "")
-        expose = request.POST.get("expose") == "on"
-        prioritize = request.POST.get("prioritize") == "on"
+    org = volunteer.organization
+    if not org:
+        messages.error(request, "No organization found for this volunteer.")
+        return redirect("vms:dashboard", volunteer.id)
 
-        # Create event
+    restored_payload = None
+    if request.GET.get("restore") == "1":
+        restored_payload = request.session.pop("pending_event_payload", None)
+
+    pipeline_debug = request.session.pop("last_pipeline_debug", None)
+    pipeline_result = request.session.pop("last_pipeline_result", None)
+
+    catalog_missing = not has_active_catalog(org, "Opportunity")
+
+    if request.method == "POST":
+        payload = _event_payload_from_post(request.POST)
+        request.session["pending_event_payload"] = payload  # so catalog flow can restore
+
+        expose = request.POST.get("expose") == "on"
+
+        if expose and catalog_missing:
+            messages.error(
+                request,
+                "Mapping catalog not detected. Generate it first to enable Cross-Platform Visibility."
+            )
+            defaults = _defaults_from_payload(payload)
+            return render(request, "vms/create_event.html", {
+                "volunteer": volunteer,
+                "defaults": defaults,
+                "catalog_missing": catalog_missing,
+                "pipeline_result": pipeline_result,
+                "pipeline_debug": pipeline_debug,
+            })
+
         event = VolunteerEvent.objects.create(
-            name=name,
-            description=description or "",
-            location=location or "",
-            duration_hours=int(duration) if duration else 1,
-            organization=volunteer.organization,
+            name=payload["title"] or "Untitled event",
+            description=payload["description"] or "",
+            location=payload["meeting_point"] or "",
+            duration_hours=int(payload["duration_hours"] or 1),
+            max_attendee_capacity=int(payload["n_volunteers"] or 0),
+            organization=org,
             isShared=expose,
-            prioritize_local=prioritize,
+            tshirt_size=payload.get("tshirt_size", ""),
             shared_since=timezone.now() if expose else None,
         )
 
-        # Create LocalResource payload (DemOrg local schema) so schema pipeline can run
-        local_payload = {
-            "opportunity": {
-                "uuid": f"demorg-{event.id}",   # stable-ish id for prototype
-                "labels": {"en": event.name},
-                # IMPORTANT: only include description if user provided it
-                **({"description": event.description} if event.description else {}),
-                "schedule": {
-                    "date": timezone.now().date().isoformat(),
-                    # If you later add start/end times in UI, set them here.
-                },
-                "where": {
-                    "address": {
-                        "city": event.location or "",
-                    }
-                },
-                "visibility": {"federated": bool(expose)},
-                # Skills here are free-text labels; the skill pipeline will normalize
-                "requirements": {
-                    "competences": [{"text": s.strip()} for s in [x for x in skills.split(",")] if s.strip()]
-                },
-            }
-        }
+        if not expose:
+            messages.success(request, f"Event '{event.name}' created (local only).")
+            return redirect("vms:create_event")
 
-        local_resource, _ = LocalResource.objects.update_or_create(
-            organization=volunteer.organization,
-            entity_type="OPPORTUNITY",
-            local_id=f"demorg-{event.id}",
-            defaults={"payload": local_payload, "retrieved_at": timezone.now()},
+        state = org.get_mapping_state("Opportunity")
+        active_catalog_dict = state.get("catalog")
+
+        if not active_catalog_dict:
+            messages.error(request, "Catalog missing unexpectedly. Generate it again.")
+            return redirect("vms:create_event")
+
+        results, debug = run_opportunity_pipeline_missing_fields_only(
+            local_payload=payload,
+            org_name=org.name,
+            active_catalog_dict=active_catalog_dict,
+            normalize_skills=True,
         )
 
-        event.source_local_id = local_resource.local_id
-        event.save(update_fields=["source_local_id"])
+        event.canonical_jsonld = results["canonical_jsonld"]
+        event.save(update_fields=["canonical_jsonld"])
 
+        request.session["last_pipeline_result"] = results
+        request.session["last_pipeline_debug"] = debug
 
-        # Attach skills
-        for s in [s.strip() for s in skills.split(",") if s.strip()]:
-            skill, _ = Skill.objects.get_or_create(label=s)
-            event.skills.add(skill)
+        messages.success(request, f"Event '{event.name}' created and canonical JSON-LD generated.")
+        return redirect("vms:create_event")
 
-        log_event("EventCreated", f"Event '{event.name}' created by {volunteer.name}")
+    if restored_payload:
+        defaults = _defaults_from_payload(restored_payload)
+    else:
+        next_id = (VolunteerEvent.objects.order_by("-id").first().id + 1) if VolunteerEvent.objects.exists() else 1
+        defaults = {
+            "name": f"Kitchen community helper",
+            "description": (
+                "Volunteers help prepare and distribute meals for vulnerable groups. "
+                "Tasks include food preparation, cleaning, logistics support, and coordination with staff. "
+                "From Monday to Friday. Requirements: basic hygiene awareness; ability to work in a team; "
+                "punctuality; speak either Spanish or basic English. Contact: Ana López, volunteer coordinator. "
+                "Email analopez@example.org, phone +34 612 345 678."
+            ),
+            "location": "Altenberger Straße 69, 4040 Linz, Austria",
+            "duration": 1,
+            "max_attendee_capacity": 20,
+            "tshirt_size": "M",
+        }
 
-        if expose:
-            on_local_event_created_run_pipelines(event.id, normalize_skills=True)
-            # 1) Register on connector
-            edc_info = edc_register_asset_and_offer(volunteer.organization, event)
-            event.ds_endpoint = edc_info["endpoint"]
-            event.ds_asset_id = edc_info["asset_id"]
-            event.ds_contract_id = edc_info["contract_id"]
-            event.save()
-
-            # 2) Asset + Contract published (short logs only)
-            log_event("EDC.AssetRegistered", f"Asset {event.ds_asset_id} published for event '{event.name}'")
-            log_event("EDC.ContractOfferPublished", f"Contract {event.ds_contract_id} offered for event '{event.name}'")
-
-            # 3) Mapping log (short)
-            mapping = map_local_event_to_shared(volunteer.organization, event)
-            mapping_short = [
-                {"local": m["local_field"], "mapped_to": m["mapped_to"], "sample": m["sample_value"]}
-                for m in mapping
-            ]
-            log_event("EventSchemaMapped", json.dumps(mapping_short, indent=2))
-
-            # 4) JSON-LD view (normalized event doc)
-            jsonld = build_event_jsonld(volunteer.organization, event, event.ds_endpoint, event.ds_asset_id,
-                                        event.ds_contract_id)
-            log_event("EventShared.JSONLD", json.dumps(jsonld, indent=2))
-
-            # 5) Catalog update
-            # log_event("CatalogUpdated",
-            #           f"{volunteer.organization.name} catalog now has {len(volunteer.organization.catalog()['events'])} events")
-
-            # 6) Notify trust anchor + broadcast
-            notify_trust_anchor_and_members(volunteer.organization, event, event.ds_endpoint)
-
-            # 7) Policy hint if applicable
-            if event.prioritize_local:
-                log_event("PolicyHint", "Local-first constraint applied: volunteers from this org prioritized.")
-        else:
-            log_event("EventPrivate", f"Event '{event.name}' remains local-only (not published to dataspace).")
-
-        messages.success(request, f"Event '{event.name}' created successfully!")
-        return redirect("vms:dashboard", vid=volunteer.id)
-
-    # Defaults
-    next_id = (VolunteerEvent.objects.order_by("-id").first().id + 1) if VolunteerEvent.objects.exists() else 1
-    defaults = {
-        "name": f"Volunteer event nº {next_id}",
-        "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor.",
-        "location": "Linz",
-        "duration": 1,
-    }
-    return render(request, "vms/create_event.html", {"volunteer": volunteer, "defaults": defaults})
-
-
+    return render(request, "vms/create_event.html", {
+        "volunteer": volunteer,
+        "defaults": defaults,
+        "catalog_missing": catalog_missing,
+        "pipeline_result": pipeline_result,
+        "pipeline_debug": pipeline_debug,
+    })
 
 
 @require_POST
 def finish_event(request, vid, eid):
-    volunteer = get_object_or_404(Volunteer, pk=vid)
-    # if not volunteer.is_manager:
-    #     messages.error(request, "Only managers can finish events.")
-    #     return redirect("vms:dashboard", vid=vid)
-
     event = get_object_or_404(VolunteerEvent, pk=eid)
     event.isFinished = True
-    event.save()
-
-    log_event("EventFinished", f"Event '{event.name}' marked as finished by {volunteer.name}")
+    event.save(update_fields=["isFinished"])
     messages.success(request, f"Event '{event.name}' marked as finished.")
     return redirect("vms:dashboard", vid=vid)
 
+
+@volunteer_login_required
 def certificate_view(request, vid):
     v = get_object_or_404(Volunteer, pk=vid)
     return render(request, "vms/certificate.html", {"volunteer": v})
 
 
+@volunteer_login_required
 def onboard_view(request, vid):
     v = get_object_or_404(Volunteer, pk=vid)
     return render(request, "vms/onboard.html", {"volunteer": v})
 
 
+@volunteer_login_required
 def logs_view(request):
     return render(request, "vms/logs.html")
 
-# ---------------- API Endpoints ----------------
+
 
 @csrf_exempt
 def api_register_volunteer(request):
@@ -357,51 +370,34 @@ def api_register_volunteer(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
 
+
 @csrf_exempt
 def api_import_history(request, vid):
     print("importing history from {}".format(vid))
-    pass
-
+    return JsonResponse({"status": "todo"})
 
 
 @volunteer_login_required
 def register_event(request, vid, eid):
-    """Register a volunteer to an event and log dataspace interactions."""
     v = get_object_or_404(Volunteer, pk=vid)
     event = get_object_or_404(VolunteerEvent, pk=eid)
 
     if request.method == "POST":
         v.events.add(event)
-
-        # If volunteer’s org and event org are both in dataspace → log subset contract flow
-        from_org = v.organization
-        to_org = event.organization
-        if from_org and to_org and from_org.member_ds and to_org.member_ds and from_org != to_org:
-            # use the event’s published contract id if available
-            contract_id = event.ds_contract_id or "no-contract"
-            log_volunteer_join(v, event, from_org, to_org, contract_id)
-
         messages.success(request, f"You have registered for {event.name}.")
     return redirect("vms:dashboard", vid=vid)
 
 
-
 @volunteer_login_required
 def unregister_event(request, vid, eid):
-    """Unregister a volunteer from an event and log dataspace cancellation."""
     v = get_object_or_404(Volunteer, pk=vid)
     event = get_object_or_404(VolunteerEvent, pk=eid)
 
     if request.method == "POST":
         v.events.remove(event)
-
-        from_org = v.organization
-        to_org = event.organization
-        if from_org and to_org and from_org.member_ds and to_org.member_ds and from_org != to_org:
-            log_volunteer_cancel(v, event, from_org, to_org)
-
         messages.info(request, f"You have unregistered from {event.name}.")
     return redirect("vms:dashboard", vid=vid)
+
 
 def api_orgs(request):
     orgs = list(Organization.objects.values("id", "name"))
@@ -410,208 +406,622 @@ def api_orgs(request):
 
 def toggle_role(request, volunteer_id):
     volunteer = get_object_or_404(Volunteer, id=volunteer_id)
-
-    # Flip the role
     volunteer.is_manager = not volunteer.is_manager
-    volunteer.save()
-
-    # Redirect back to the same dashboard (or wherever you want)
+    volunteer.save(update_fields=["is_manager"])
     return redirect("vms:dashboard", vid=volunteer.id)
 
 
 def switch_volunteer(request, volunteer_id):
-    current = get_object_or_404(Volunteer, id=volunteer_id)
-
-    # Example hardcoded swap
-    if current.name == "Alvaro":
-        new_volunteer = get_object_or_404(Volunteer, name="Andrea")
-    else:
-        new_volunteer = get_object_or_404(Volunteer, name="Alvaro")
-
-    # Store the new volunteer in session
-    request.session["volunteer_id"] = new_volunteer.id
-
-    # Redirect back to the dashboard with Andrea (or Alvaro)
-    return redirect("vms:dashboard", vid=new_volunteer.id)
+    return redirect("vms:dashboard", vid=volunteer_id)
 
 
-MILESTONE_HOURS = 100
-
-def _minimal_subset_to_reach(target, events):
-    """
-    Greedy: pick largest durations first until >= target.
-    events: list of dicts with 'id', 'hours', ...
-    returns: set of event ids selected
-    """
-    ordered = sorted(events, key=lambda e: int(e["hours"]), reverse=True)
-    out, total = [], 0
-    for e in ordered:
-        if total >= target: break
-        out.append(e["id"])
-        total += int(e["hours"])
-    return set(out), total
-
-
+@require_GET
 def api_certificate_context(request, vid):
-    v = get_object_or_404(Volunteer, pk=vid)
-    home_org = v.organization.name if v.organization else None
-
-    # completed activities = all registered events marked finished
-    completed = v.events.filter(isFinished=True).select_related("organization").prefetch_related("skills")
-    activities = []
-    hours_total = 0
-    hours_home = 0
-    hours_remote = 0
-
-    # build list
-    for e in completed:
-        hrs = int(e.duration_hours)
-        hours_total += hrs
-        if home_org and e.organization and e.organization.name == home_org:
-            hours_home += hrs
-        else:
-            hours_remote += hrs
-        activities.append({
-            "id": str(e.id),
-            "title": e.name,
-            "hours": hrs,
-            "provider": e.organization.name if e.organization else "Unknown",
-            "skills": [s.label for s in e.skills.all()],
-        })
-
-    # choose a minimal subset that reaches 100h (if possible)
-    contrib_ids, contrib_sum = _minimal_subset_to_reach(MILESTONE_HOURS, activities) if hours_total >= MILESTONE_HOURS else (set(), 0)
-    for a in activities:
-        a["contributes"] = a["id"] in contrib_ids
-
-    data = {
-        "total_hours": hours_total,
-        "hours_by_platform": {"home": hours_home, "remote": hours_remote},
-        "eligible": hours_total >= MILESTONE_HOURS,
-        "contrib_sum": contrib_sum,
-        "activities": activities
-    }
-    return JsonResponse(data)
+   pass
 
 @csrf_exempt
-
+@require_POST
 def api_certificate_request(request):
-    """
-    Issue a certificate if the volunteer has >=100h.
-    Follows a data-space pattern: request → contract → cross-org attestations → issuance.
-    """
-    try:
-        payload = json.loads(request.body)
-    except Exception:
-        return HttpResponseBadRequest("Invalid JSON")
+    pass
 
-    vid = payload.get("volunteer_id")
-    items = payload.get("items", [])
-    if not vid:
-        return HttpResponseBadRequest("Missing volunteer_id")
 
+@require_GET
+def api_certificate_logs(request, vid):
     v = get_object_or_404(Volunteer, pk=vid)
-    home_org = v.organization.name if v.organization else None
-
-    # Load selected events (proof set)
-    event_ids = [int(i["id"]) for i in items]
-    ev_qs = VolunteerEvent.objects.filter(id__in=event_ids).select_related("organization").prefetch_related("skills")
-    if ev_qs.count() != len(event_ids):
-        return HttpResponseBadRequest("Some selected activities not found")
-
-    # recompute hours and breakdown
-    total = 0
-    from_home = 0
-    from_remote = 0
-    first_aid_skill = Skill.objects.filter(label__iexact="First Aid").first()
-    first_aid_hours = 0
-
-    cert_items = []
-    for e in ev_qs:
-        hrs = int(e.duration_hours)
-        total += hrs
-        if home_org and e.organization and e.organization.name == home_org:
-            from_home += hrs
-        else:
-            from_remote += hrs
-
-        # hours towards First Aid recognition
-        if first_aid_skill and e.skills.filter(id=first_aid_skill.id).exists():
-            first_aid_hours += hrs
-
-        cert_items.append({
-            "event_id": e.id,
-            "event_name": e.name,
-            "hours": hrs,
-            "provider": e.organization.name if e.organization else "Unknown",
-            "skills": [s.label for s in e.skills.all()],
-        })
-
-    # must meet milestone
-    if total < MILESTONE_HOURS:
-        return JsonResponse({"status": "rejected", "reason": f"Need {MILESTONE_HOURS}h; provided {total}h"}, status=400)
-
-    # -------- Data space logs (story style) ----------
-    # Request
-    log_event("EDC.CredentialRequest", f"{v.name} (via {home_org}) requests volunteer certificate based on {len(cert_items)} activities")
-
-    # Contract for credential issuance
-    contract_id = hashlib.sha1(f"credential-{vid}-{total}".encode()).hexdigest()[:12]
-    log_event("EDC.ContractNegotiated", json.dumps({
-        "between": [home_org or "Unknown", "CredentialIssuer"],
-        "contract_id": contract_id,
-        "purpose": "credential_issuance",
-        "data_minimization": "Only activity IDs, hours and provider attestations shared",
-        "retention": "P36M or until revoked"
-    }, indent=2))
-
-    # Cross-org attestations (simulate one per distinct provider other than home)
-    providers = sorted({ci["provider"] for ci in cert_items if ci["provider"]})
-    for p in providers:
-        if home_org and p == home_org:  # home org doesn't need external attestation
-            continue
-        log_event("EDC.AttestationRequested", f"Requesting hours attestation from {p} for {v.name}")
-        log_event("EDC.AttestationReceived", f"{p} confirms contributed hours for {v.name} under contract {contract_id}")
-
-    # -------- Persist certificate ----------
-    issuer = Organization.objects.filter(is_dsga=True).first() or v.organization  # mock: DSGA or home org
-    proof = hashlib.sha1(json.dumps(cert_items, sort_keys=True).encode()).hexdigest()
-
-    cert = Certificate.objects.create(
-        volunteer=v,
-        issuer=issuer,
-        items=cert_items,
-        proof_hash=proof
-    )
-    # attach skills (for JSON-LD nice output)
-    if first_aid_skill:
-        cert.skills.add(first_aid_skill)
-
-    # Build JSON-LD with breakdown + recognitions
-    cert_jsonld = cert.to_jsonld()
-    cert_jsonld["vms:hoursBreakdown"] = {
-        "total": total,
-        "fromHomeOrg": from_home,
-        "fromOtherOrgs": from_remote
-    }
-    recognitions = []
-    if first_aid_hours >= MILESTONE_HOURS:
-        recognitions.append({
-            "@type": "schema:CategoryCode",
-            "schema:name": "First Aid",
-            "vms:hours": first_aid_hours,
-            "vms:reason": "≥100h using First Aid across volunteer events"
-        })
-    if recognitions:
-        cert_jsonld["vms:recognitions"] = recognitions
-
-    # Issued & distribution logs
-    log_event("Credential.Issued", f"Issued Volunteer Certificate {cert.id} to {v.name} by {issuer.name if issuer else 'Unknown'}")
-    log_event("EDC.CredentialDelivered", f"Certificate {cert.id} delivered to {home_org} (holder)")
-
+    logs = CertificateLog.objects.filter(volunteer=v).order_by("created_at")
     return JsonResponse({
-        "status": "issued",
-        "certificate": cert_jsonld,
-        "contract_id": contract_id
+        "logs": [
+            {
+                "type": l.type,
+                "message": l.message,
+                "timestamp": l.created_at.isoformat(timespec="seconds"),
+            }
+            for l in logs
+        ]
     })
 
+@require_POST
+@csrf_protect
+@volunteer_login_required
+def save_mapping_catalog(request):
+    volunteer_id = request.session.get("volunteer_id")
+    volunteer = get_object_or_404(Volunteer, pk=volunteer_id)
+
+    if not volunteer.is_manager:
+        messages.error(request, "Only managers can save mapping catalogs.")
+        return redirect("vms:dashboard", vid=volunteer.id)
+
+    org = volunteer.organization
+    entity = request.POST.get("entity") or "Opportunity"
+    rule_count = int(request.POST.get("rule_count") or "0")
+
+    keep_rules = []
+    for i in range(rule_count):
+        src = request.POST.get(f"rule_{i}_source")
+        tgt = request.POST.get(f"rule_{i}_target")
+        keep = request.POST.get(f"rule_{i}_keep") == "on"
+
+        if keep and src and tgt:
+            keep_rules.append({"source_path": src, "target_key": tgt})
+
+    save_opportunity_catalog_from_review(org, keep_rules)
+
+    messages.success(request, "Mapping catalog saved (ACTIVE). Returning to Create Event (form restored).")
+    return redirect("vms:create_event")
+
+
+@require_POST
+@csrf_protect
+@volunteer_login_required
+def generate_opportunity_catalog(request):
+    volunteer_id = request.session.get("volunteer_id")
+    volunteer = get_object_or_404(Volunteer, pk=volunteer_id)
+
+    if not volunteer.is_manager:
+        messages.error(request, "Only managers can generate mapping catalogs.")
+        return redirect("vms:dashboard", vid=volunteer.id)
+
+    org = volunteer.organization
+    if not org:
+        messages.error(request, "No organization found.")
+        return redirect("vms:dashboard", vid=volunteer.id)
+
+    payload = _event_payload_from_post(request.POST)
+    request.session["pending_event_payload"] = payload  # so we can restore after saving
+
+    created, review_payload = ensure_draft_opportunity_catalog_for_review(org, payload)
+    if created:
+        return render(request, "vms/mapping_catalog_review.html", review_payload)
+
+    messages.info(request, "Mapping catalog already exists.")
+    return redirect("vms:create_event")
+
+
+def _canonical_get(doc: dict, key: str):
+    v = doc.get(key)
+    if isinstance(v, dict):
+        if key in ("schema:location", "schema:address"):
+            return (
+                v.get("schema:name")
+                or v.get("schema:streetAddress")
+                or v.get("schema:addressLocality")
+                or json.dumps(v, ensure_ascii=False)
+            )
+        if key == "schema:organizer":
+            return v.get("schema:name") or json.dumps(v, ensure_ascii=False)
+        if v.get("@type") == "schema:DefinedTerm":
+            return v.get("schema:name") or v.get("@id")
+    return v
+
+
+def _reverse_map_canonical_to_local_payload(canonical_jsonld: dict, active_catalog_dict: dict) -> dict:
+    rules = (active_catalog_dict or {}).get("rules", [])
+    canon_to_local = {}
+    used_canon_keys = set()
+
+    for r in rules:
+        if r.get("transform") in ("constant", "constant_if_missing"):
+            continue
+        sources = r.get("sources") or []
+        if len(sources) != 1:
+            continue
+        local_key = sources[0]
+        canon_key = r.get("target_key")
+        if canon_key:
+            canon_to_local[canon_key] = local_key
+            used_canon_keys.add(canon_key)
+
+    local = {
+        "title": "",
+        "description": "",
+        "meeting_point": "",
+        "duration_hours": 1,
+        "n_volunteers": 0,
+        "tshirt_size": "",
+    }
+
+    for canon_key, local_key in canon_to_local.items():
+        val = _canonical_get(canonical_jsonld, canon_key)
+        if val is None:
+            continue
+
+        if local_key in ("title",):
+            local["title"] = str(val)
+        elif local_key in ("description",):
+            local["description"] = str(val)
+        elif local_key in ("meeting_point", "location"):
+            local["meeting_point"] = str(val)
+        elif local_key in ("duration_hours", "duration"):
+            try:
+                local["duration_hours"] = int(val)
+            except Exception:
+                pass
+        elif local_key in ("n_volunteers", "max_volunteers", "max_attendee_capacity"):
+            try:
+                local["n_volunteers"] = int(val)
+            except Exception:
+                pass
+        else:
+            local["description"] += f"\n{local_key}: {val}"
+
+    def _pretty_extra(k: str, v):
+        if k == "schema:organizer" and isinstance(v, dict):
+            name = v.get("schema:name") or v.get("name")
+            cp = v.get("schema:contactPoint") or v.get("contactPoint") or {}
+            if isinstance(cp, dict):
+                email = cp.get("schema:email") or cp.get("email")
+                phone = cp.get("schema:telephone") or cp.get("telephone")
+                contact_name = cp.get("schema:name") or cp.get("name")
+            else:
+                email = phone = contact_name = None
+
+            parts = []
+            if name:
+                parts.append(str(name))
+            if contact_name:
+                parts.append(f"Contact: {contact_name}")
+            if email:
+                parts.append(f"Email: {email}")
+            if phone:
+                parts.append(f"Phone: {phone}")
+            return " . ".join(parts) if parts else None
+
+        if k in ("vms:commitment", "commitment") and isinstance(v, dict):
+            days = v.get("vms:daysOfWeek") or v.get("daysOfWeek") or []
+            blocks = v.get("vms:timeBlocks") or v.get("timeBlocks") or []
+            if not isinstance(days, list):
+                days = [days]
+            if not isinstance(blocks, list):
+                blocks = [blocks]
+            parts = []
+            if days:
+                parts.append("Days: " + ", ".join([str(x) for x in days if x]))
+            if blocks:
+                parts.append("Time blocks: " + ", ".join([str(x) for x in blocks if x]))
+            return " . ".join(parts) if parts else None
+
+        if k in ("vms:requiresSkill", "requiresSkill"):
+            labels = []
+            if isinstance(v, list):
+                for it in v:
+                    if isinstance(it, dict):
+                        lbl = it.get("schema:name") or it.get("name") or it.get("label")
+                        if lbl:
+                            labels.append(str(lbl))
+                    else:
+                        labels.append(str(it))
+            elif isinstance(v, dict):
+                lbl = v.get("schema:name") or v.get("name") or v.get("label")
+                if lbl:
+                    labels.append(str(lbl))
+            else:
+                labels.append(str(v))
+            labels = [x for x in labels if x.strip()]
+            return ", ".join(labels) if labels else None
+
+        if k in ("schema:location", "schema:address") and isinstance(v, dict):
+            name = v.get("schema:name") or v.get("name")
+            addr = v.get("schema:address") or v.get("address") or {}
+            if isinstance(addr, dict):
+                street = addr.get("schema:streetAddress") or addr.get("streetAddress")
+                postal = addr.get("schema:postalCode") or addr.get("postalCode")
+                city = addr.get("schema:addressLocality") or addr.get("addressLocality")
+                country = addr.get("schema:addressCountry") or addr.get("addressCountry")
+                parts = [p for p in [street, postal, city, country] if p]
+                addr_str = ", ".join([str(p) for p in parts]) if parts else None
+            else:
+                addr_str = None
+
+            if name and addr_str:
+                return f"{name} ({addr_str})"
+            return str(name or addr_str) if (name or addr_str) else None
+
+        if isinstance(v, list):
+            flat = []
+            for it in v:
+                if isinstance(it, dict):
+                    flat.append(it.get("schema:name") or it.get("name") or it.get("@id") or "")
+                else:
+                    flat.append(str(it))
+            flat = [str(x).strip() for x in flat if str(x).strip()]
+            return ", ".join(flat) if flat else None
+
+        if isinstance(v, dict):
+            for key in ("schema:name", "name", "label", "schema:description", "description", "@id"):
+                if key in v and v.get(key):
+                    return str(v.get(key))
+            return None
+
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
+
+    extras = []
+    for k, v in canonical_jsonld.items():
+        if k in ("@context", "@type", "@id"):
+            continue
+        if k in used_canon_keys:
+            continue
+
+        pretty = _pretty_extra(k, v)
+        if pretty:
+            friendly = {
+                "schema:description": "Description",
+                "schema:startDate": "Start date",
+                "schema:endDate": "End date",
+                "schema:organizer": "Organizer",
+                "vms:commitment": "Schedule",
+                "vms:requiresSkill": "Skills",
+            }.get(k, k)
+            extras.append(f"{friendly}: {pretty}")
+
+    if extras:
+        base = local["description"].strip()
+        tail = "\n".join(extras)
+        local["description"] = (base + "\n\n" if base else "") + tail
+
+    if not local["title"]:
+        local["title"] = canonical_jsonld.get("schema:name") or "Federated opportunity"
+    if not local["description"]:
+        local["description"] = canonical_jsonld.get("schema:description") or ""
+
+    return local
+
+
+@volunteer_login_required
+def federated_register_event(request, vid, provider_key: str, opportunity_id: str):
+
+    if request.method != "POST":
+        return HttpResponseBadRequest("Use POST")
+
+    v = get_object_or_404(Volunteer, pk=vid)
+    my_org = v.organization
+    if not my_org:
+        messages.error(request, "No organization found for this volunteer.")
+        return redirect("vms:dashboard", vid=vid)
+
+    st = my_org.get_mapping_state("Opportunity")
+    active_catalog = st.get("catalog")
+    if not active_catalog or st.get("status") != "active":
+        messages.error(request, "Your mapping catalog is not active. Activate it first.")
+        return redirect("vms:dashboard", vid=vid)
+
+    from vms.remote_feeds import remote_opportunities_jsonld
+    remote = remote_opportunities_jsonld()
+    docs = remote.get(provider_key, [])
+
+    canonical = None
+    for d in docs:
+        _id = str(d.get("@id") or "")
+        if opportunity_id == _id:
+            canonical = d
+            break
+        if _id.endswith("/" + str(opportunity_id)):
+            canonical = d
+            break
+
+    if not canonical:
+        messages.error(request, "Federated opportunity not found.")
+        return redirect("vms:dashboard", vid=vid)
+
+    local_payload = _reverse_map_canonical_to_local_payload(canonical, active_catalog)
+
+    remote_org = get_object_or_404(Organization, platform_key=provider_key)
+    remote_id = opportunity_id
+
+    ev, created = VolunteerEvent.objects.get_or_create(
+        organization=remote_org,
+        is_federated_cache=True,
+        source_local_id=remote_id,
+        defaults=dict(
+            name=local_payload.get("title") or "Federated opportunity",
+            description=local_payload.get("description") or "",
+            location=local_payload.get("meeting_point") or "",
+            duration_hours=int(local_payload.get("duration_hours") or 1),
+            max_attendee_capacity=int(local_payload.get("n_volunteers") or 0),
+            isShared=True,
+            isFinished=False,
+            canonical_jsonld=canonical,
+        ),
+    )
+
+    if not created:
+        ev.name = local_payload.get("title") or ev.name
+        ev.description = local_payload.get("description") or ev.description
+        ev.location = local_payload.get("meeting_point") or ev.location
+        try:
+            ev.duration_hours = int(local_payload.get("duration_hours") or ev.duration_hours)
+        except Exception:
+            pass
+        try:
+            ev.max_attendee_capacity = int(local_payload.get("n_volunteers") or ev.max_attendee_capacity)
+        except Exception:
+            pass
+        ev.canonical_jsonld = canonical
+        ev.save()
+
+    v.events.add(ev)
+    messages.success(request, f"✅ Registered to federated opportunity: {ev.name}")
+    return redirect("vms:dashboard", vid=vid)
+
+
+def _cert_log(volunteer: Volunteer, typ: str, msg: str) -> None:
+    try:
+        CertificateLog.objects.create(volunteer=volunteer, type=typ, message=msg)
+    except Exception:
+        pass
+
+
+ESCO_FIRST_AID_UUID = "f7464f30-662b-4177-85a0-3df9693e9e58"
+ESCO_FIRST_AID_URI = f"http://data.europa.eu/esco/skill/{ESCO_FIRST_AID_UUID}"
+ESCO_FIRST_AID_LABEL = "First Aid"
+
+
+def _normalize_skill_phrase_to_esco(phrase: str):
+
+    if not phrase:
+        return None
+    key = str(phrase).strip().lower()
+
+    if key == "first aid":
+        return {"uri": ESCO_FIRST_AID_URI, "label": ESCO_FIRST_AID_LABEL, "conf": 0.99, "method": "lexical", "raw": phrase}
+
+    if key == "emergency care":
+        return {"uri": ESCO_FIRST_AID_URI, "label": ESCO_FIRST_AID_LABEL, "conf": 0.82, "method": "semantic", "raw": phrase}
+
+    if "first aid" in key:
+        return {"uri": ESCO_FIRST_AID_URI, "label": ESCO_FIRST_AID_LABEL, "conf": 0.75, "method": "heuristic", "raw": phrase}
+
+    if "emergency" in key and ("care" in key or "aid" in key):
+        return {"uri": ESCO_FIRST_AID_URI, "label": ESCO_FIRST_AID_LABEL, "conf": 0.70, "method": "heuristic", "raw": phrase}
+
+    return None
+
+
+def _extract_required_skills_from_event(ev: VolunteerEvent) -> list[str]:
+
+    out: list[str] = []
+
+    if isinstance(getattr(ev, "skills", None), list):
+        out.extend([str(s).strip() for s in ev.skills if str(s).strip()])
+
+    doc = ev.canonical_jsonld or {}
+    if isinstance(doc, dict):
+        req = doc.get("vms:requiresSkill")
+        if isinstance(req, list):
+            for it in req:
+                if isinstance(it, dict):
+                    nm = it.get("schema:name") or it.get("name")
+                    if nm:
+                        out.append(str(nm).strip())
+                elif isinstance(it, str) and it.strip():
+                    out.append(it.strip())
+
+    seen = set()
+    uniq = []
+    for s in out:
+        k = s.lower()
+        if k not in seen:
+            seen.add(k)
+            uniq.append(s)
+    return uniq
+
+
+def _event_hours(ev: VolunteerEvent) -> int:
+
+    doc = ev.canonical_jsonld or {}
+    if isinstance(doc, dict) and doc.get("vms:durationHours") is not None:
+        try:
+            return int(doc.get("vms:durationHours"))
+        except Exception:
+            pass
+    return int(getattr(ev, "duration_hours", 0) or 0)
+
+
+def _activity_provider_label(home_org: Organization, ev: VolunteerEvent) -> str:
+    if not ev.organization:
+        return "Unknown"
+    if home_org and ev.organization_id == home_org.id:
+        return str(home_org.name)
+    return ev.organization.name or (ev.organization.platform_key or "Remote")
+
+
+def _is_remote_for_volunteer(home_org: Organization, ev: VolunteerEvent) -> bool:
+    if not ev.organization or not home_org:
+        return True
+    if ev.organization_id != home_org.id:
+        return True
+    if getattr(ev, "is_federated_cache", False):
+        return True
+    return False
+
+
+@require_GET
+def api_certificate_context(request, vid):
+    v = get_object_or_404(Volunteer, pk=vid)
+    home_org = v.organization
+
+    CertificateLog.objects.filter(volunteer=v).delete()
+
+    target = {"uri": ESCO_FIRST_AID_URI, "label": ESCO_FIRST_AID_LABEL}
+    _cert_log(v, "TARGET", f"Target field: {target['label']} (ESCO={target['uri']})")
+
+    # Thesis-like calls (represented)
+    _cert_log(v, "DISCOVERY", "Discovery: find providers exposing participation/VolunteerRole evidence for certification.")
+    _cert_log(v, "CONTRACT", "Connector: contract negotiation (policy+purpose) granted for certificate aggregation.")
+    _cert_log(v, "CALL", "Interop: retrieve participation evidence (local DB + cached federated registrations).")
+
+    # REAL evidence: finished registered events
+    qs = v.events.select_related("organization").all()
+    finished = [e for e in qs if getattr(e, "isFinished", False)]
+
+    activities = []
+    home_hours = 0
+    remote_hours = 0
+    contributing_total = 0
+
+    for ev in finished:
+        raw_skills = _extract_required_skills_from_event(ev)
+        norm = []
+        for s in raw_skills:
+            mapped = _normalize_skill_phrase_to_esco(s)
+            if mapped:
+                norm.append(mapped)
+
+        contributes = any(x["uri"] == target["uri"] for x in norm)
+        hours = _event_hours(ev)
+
+        provider = _activity_provider_label(home_org, ev)
+        is_remote = _is_remote_for_volunteer(home_org, ev)
+
+        if is_remote:
+            remote_hours += hours
+        else:
+            home_hours += hours
+        if contributes:
+            contributing_total += hours
+
+        if norm:
+            lines = ", ".join([f'"{x["raw"]}"→{x["label"]} (conf={x["conf"]:.2f}, {x["method"]})' for x in norm])
+            _cert_log(v, "NORMALIZE", f"{ev.name}: {lines}")
+        else:
+            _cert_log(v, "NORMALIZE", f"{ev.name}: no ESCO match for skills={raw_skills}")
+
+        activities.append({
+            "id": ev.id,
+            "title": ev.name,
+            "provider": provider,
+            "hours": hours,
+            "is_remote": bool(is_remote),
+            "skills": raw_skills,
+            "normalized": norm,
+            "contributes": bool(contributes),
+        })
+
+    if contributing_total < 100:
+        _cert_log(v, "DEMO", "Demo mode enabled: injecting evidence 70h (Demorg) + 40h (Volgistics) → 110h.")
+
+        activities = [
+            {
+                "id": "DEMO-DEMORG-001",
+                "title": "Light Medical Assistance",
+                "provider": "Demorg",
+                "hours": 70,
+                "is_remote": False,
+                "skills": ["Emergency Care"],
+                "normalized": [
+                    {"uri": ESCO_FIRST_AID_URI, "label": ESCO_FIRST_AID_LABEL, "conf": 0.82, "method": "semantic", "raw": "Emergency Care"}
+                ],
+                "contributes": True,
+            },
+            {
+                "id": "DEMO-VOL-102",
+                "title": "Hospital Reception Support",
+                "provider": "Volgistics",
+                "hours": 40,
+                "is_remote": True,
+                "skills": ["First Aid"],
+                "normalized": [
+                    {"uri": ESCO_FIRST_AID_URI, "label": ESCO_FIRST_AID_LABEL, "conf": 1.00, "method": "canonical", "raw": "First Aid"}
+                ],
+                "contributes": True,
+            },
+        ]
+        home_hours = 70
+        remote_hours = 40
+        contributing_total = 110
+
+    _cert_log(v, "AGGREGATE", f"Aggregate contributing hours in {target['label']}: {contributing_total}h (threshold=100h).")
+
+    return JsonResponse({
+        "volunteer_id": v.id,
+        "target_skill": target,
+        "total_hours_contributing": contributing_total,
+        "hours_by_platform": {"home": home_hours, "remote": remote_hours},
+        "activities": activities,
+    })
+
+
+@csrf_exempt
+@require_POST
+def api_certificate_request(request):
+    payload = json.loads(request.body or "{}")
+    vid = payload.get("volunteer_id")
+    v = get_object_or_404(Volunteer, pk=vid)
+
+    ctx = json.loads(api_certificate_context(request, vid).content.decode("utf-8"))
+    total = int(ctx.get("total_hours_contributing", 0))
+
+    if total < 100:
+        _cert_log(v, "ISSUE_DENY", f"Denied: only {total}h contributing hours (need 100h).")
+        return JsonResponse({"status": "denied", "reason": f"Only {total}h contributing hours."}, status=400)
+
+    today = timezone.now().date().isoformat()
+    target = ctx["target_skill"]
+
+    cert = {
+        "@context": {
+            "schema": "https://schema.org/",
+            "vms": "https://vms.example.org/context#",
+            "esco": "http://data.europa.eu/esco/skill/",
+        },
+        "@type": ["schema:EducationalOccupationalCredential", "vms:VolunteerCertificate"],
+        "@id": f"https://vms.example.org/certificates/{v.id}/{today}",
+        "schema:name": f"{target['label']} Volunteer Service Certificate",
+        "schema:dateIssued": today,
+        "schema:description": (
+            f"Issued for {total}h of volunteering in the field '{target['label']}', "
+            "aggregated across local and federated opportunities using ESCO-based skill normalization."
+        ),
+        "vms:volunteer": {"@type": "schema:Person", "schema:name": v.name, "schema:identifier": str(v.id)},
+        "vms:targetSkill": {"@id": target["uri"], "schema:name": target["label"]},
+        "vms:totalHours": total,
+        "vms:evidence": ctx.get("activities", []),
+    }
+
+    CertificateIssue.objects.create(
+        volunteer=v,
+        target_esco_uri=target["uri"],
+        total_hours=total,
+        certificate_jsonld=cert,
+    )
+
+    _cert_log(v, "ISSUE", f"Issued certificate: {target['label']} for {total}h.")
+    return JsonResponse({"status": "issued", "certificate": cert})
+
+
+@require_GET
+def api_certificate_logs(request, vid):
+    v = get_object_or_404(Volunteer, pk=vid)
+    logs = CertificateLog.objects.filter(volunteer=v).order_by("created_at")
+    return JsonResponse({
+        "logs": [
+            {
+                "type": l.type,
+                "message": l.message,
+                "timestamp": l.created_at.isoformat(timespec="seconds"),
+            }
+            for l in logs
+        ]
+    })

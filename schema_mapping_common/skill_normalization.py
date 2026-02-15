@@ -1,4 +1,3 @@
-# schema_mapping_common/skill_normalization.py
 from __future__ import annotations
 
 import re
@@ -14,7 +13,7 @@ from schema_mapping_common.llm_integration import ollama_select_candidate
 class SkillCandidate:
     uri: str
     label: str
-    score: float  # retrieval score (semantic or API)
+    score: float
 
 
 @dataclass(frozen=True)
@@ -23,7 +22,7 @@ class SkillDecision:
     chosen_uri: Optional[str]
     chosen_label: Optional[str]
     confidence: float
-    method: str  # ACCEPT | LLM | REJECT
+    method: str
     note: str = ""
 
 
@@ -89,9 +88,6 @@ def _print_decision(decision: "SkillDecision", cfg: SkillEngineConfig) -> None:
     else:
         print(f"Decision: AMBIGUOUS → LLM (conf={decision.confidence:.2f})  [{decision.note}]")
     print("-" * w)
-# -------------------------
-# Composite phrase splitting
-# -------------------------
 
 _AND_OR_SPLIT_RE = re.compile(
     r"""
@@ -111,49 +107,33 @@ _AND_OR_SPLIT_RE = re.compile(
 
 _EITHER_PREFIX_RE = re.compile(r"^\s*(either|either:)\s+", re.IGNORECASE)
 
-# Common language-skill phrasing patterns -> strip the verb/intro and keep only the language chunk.
 _LANGUAGE_PREFIX_RE = re.compile(
     r"^\s*(?:to\s+)?"
     r"(speak|write|read|understand|communicate|communicate\s+in|use|knowledge\s+of|fluent\s+in|proficient\s+in)\s+",
     re.IGNORECASE,
 )
 
-# Remove filler words that often appear in language requirements
 _LANGUAGE_FILLERS_RE = re.compile(r"^\s*(?:either|in|the|a|an)\s+", re.IGNORECASE)
 
 
 def _clean_piece(s: str) -> str:
     s = s.strip(" \t\r\n-–—·•.()[]{}:;")
-    # collapse spaces
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
 
 def decompose_skill_phrase(phrase: str) -> List[str]:
-    """
-    Split composite skill phrases into atomic phrases.
-    Examples:
-      - "Spanish or basic English" -> ["Spanish", "basic English"]
-      - "cooking and cleaning" -> ["cooking", "cleaning"]
-      - "teamwork; communication" -> ["teamwork", "communication"]
-      - "speak either Spanish or basic English" -> ["Spanish", "basic English"]
-    """
     p = (phrase or "").strip()
     if not p:
         return []
 
-    # Special handling for language requirement sentences:
-    # If it starts with "speak/write/read/..." then strip that prefix.
     p2 = _LANGUAGE_PREFIX_RE.sub("", p)
-    # remove leading "either"
     p2 = _EITHER_PREFIX_RE.sub("", p2)
     p2 = _LANGUAGE_FILLERS_RE.sub("", p2).strip()
 
-    # If stripping made it too short (e.g., "speak") fallback to original
     if len(p2) >= 2:
         p = p2
 
-    # Split on separators and conjunctions
     parts = [x for x in _AND_OR_SPLIT_RE.split(p) if x and x.strip()]
     if not parts:
         parts = [p]
@@ -161,36 +141,37 @@ def decompose_skill_phrase(phrase: str) -> List[str]:
     out: List[str] = []
     for part in parts:
         s = _clean_piece(part)
-        # Filter obviously non-skill junk
         if not s:
             continue
-        # length guards (skills are usually short)
         if len(s) < 2 or len(s) > 80:
             continue
         out.append(s)
 
-    # If we split into too many tiny fragments, keep original phrase to avoid noise
     if len(out) > 6:
         return [_clean_piece(phrase)]
 
     return out
 
-# -------------------------
-# Extraction
-# -------------------------
 
 def extract_skill_phrases(canonical: Dict[str, Any]) -> List[str]:
-    """
-    Collect skill phrases from canonical JSON-LD and decompose composite phrases.
-    """
+
     raw: List[str] = []
 
     def add_many(v: Any) -> None:
         if isinstance(v, list):
             for x in v:
+                if isinstance(x, dict):
+                    phrase = x.get("vms:sourcePhrase") or x.get("schema:name") or x.get("name")
+                    if isinstance(phrase, str) and phrase.strip():
+                        raw.append(phrase.strip())
+                    continue
                 s = str(x).strip()
                 if s:
                     raw.append(s)
+        elif isinstance(v, dict):
+            phrase = v.get("vms:sourcePhrase") or v.get("schema:name") or v.get("name")
+            if isinstance(phrase, str) and phrase.strip():
+                raw.append(phrase.strip())
         elif isinstance(v, str) and v.strip():
             raw.append(v.strip())
 
@@ -203,38 +184,26 @@ def extract_skill_phrases(canonical: Dict[str, Any]) -> List[str]:
             low = normalize_text(seg)
             if any(low.startswith(a) for a in ["skills:", "requirements:", "qualifications:", "required:"]):
                 tail = seg.split(":", 1)[1].strip() if ":" in seg else seg.strip()
-                # Split description lists by newline/semicolon first (coarse),
-                # then decompose each item further (fine).
                 for item in [x.strip() for x in tail.replace("\n", ";").split(";") if x.strip()]:
                     raw.append(item)
 
-    # Decompose composites (AND/OR/etc.)
-    decomposed: List[str] = []
-    for s in raw:
-        decomposed.extend(decompose_skill_phrase(s))
-
-    # Dedup by normalized key
+    out: List[str] = []
     seen = set()
-    uniq: List[str] = []
-    for s in decomposed:
-        k = normalize_text(s, keep_colon=False)
-        if k and k not in seen:
-            seen.add(k)
-            uniq.append(s)
+    for s in raw:
+        s2 = str(s).strip()
+        if not s2:
+            continue
+        key = normalize_text(s2, keep_colon=False)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(s2)
+    return out
 
-    return uniq[:60]
-
-
-
-# -------------------------
-# Retrieval backends
-# -------------------------
 
 Retriever = Callable[[str, int], List[SkillCandidateScore]]  # (phrase, k) -> candidates
 
 
 def _language_tokens(s: str) -> List[str]:
-    # tiny list, extend if needed
     langs = ["english", "spanish", "german", "french", "italian", "portuguese", "catalan", "deutsch", "español", "inglés"]
     low = normalize_text(s, keep_colon=False)
     return [l for l in langs if l in low]
@@ -246,7 +215,6 @@ def _compute_boost(phrase: str, label: str) -> float:
 
     boost = 0.0
 
-    # Language anchor boost (helps: "Spanish" -> Spanish skills; "English" -> English skills)
     ptoks = _language_tokens(p)
     if ptoks:
         for t in ptoks:
@@ -254,7 +222,6 @@ def _compute_boost(phrase: str, label: str) -> float:
                 boost += 0.10
                 break
 
-    # First-aid anchor boost (helps disambiguate first-aid family)
     if "first aid" in p and "first aid" in l:
         boost += 0.10
 
@@ -262,36 +229,41 @@ def _compute_boost(phrase: str, label: str) -> float:
 
 
 def make_esco_api_retriever(esco_client, encoder: SemanticEncoder, *, lang: str = "en") -> Retriever:
-    """
-    ESCO API = candidate generator.
-    We compute our own scores (sem/lex/boost/comb) to make tau/margin meaningful.
-    """
+
+    from schema_mapping_common.utilities import lexical_similarity, normalize_text
+
     def _r(phrase: str, k: int) -> List[SkillCandidateScore]:
-        # IMPORTANT: fetch more than k, then rerank locally (improves quality)
         hits = esco_client.search_skills(phrase, limit=max(25, k), lang=lang)
         if not hits:
             return []
 
         qv = encoder.embed([phrase])[0]
-        a = normalize_text(phrase, keep_colon=False)
 
         ranked: List[SkillCandidateScore] = []
         for h in hits:
             lv = encoder.embed([h.title])[0]
-            sem = float(encoder.cosine(qv, lv))  # ~0..1-ish
+            sem = float(encoder.cosine(qv, lv))
 
-            b = normalize_text(h.title, keep_colon=False)
-            lex = 1.0 if a == b else 0.0  # keep minimal; still very useful for exact labels
+            a_norm = normalize_text(phrase, keep_colon=False)
+            b_norm = normalize_text(h.title, keep_colon=False)
+
+            lex = float(
+                max(
+                    lexical_similarity(a_norm, b_norm),
+                    lexical_similarity(phrase, h.title),
+                )
+            )
 
             boost = float(_compute_boost(phrase, h.title))
 
-            comb = 0.80 * sem + 0.2 * lex + 0.00 * boost
+            comb = 0.75 * sem + 0.20 * lex + 0.05 * boost
+
             ranked.append(
                 SkillCandidateScore(
                     uri=h.uri,
                     label=h.title,
                     semantic=sem,
-                    lexical=float(lex),
+                    lexical=lex,
                     boost=boost,
                     combined=float(comb),
                 )
@@ -307,14 +279,9 @@ def make_esco_api_retriever(esco_client, encoder: SemanticEncoder, *, lang: str 
 def make_local_embedding_retriever(
     encoder: SemanticEncoder,
     *,
-    esco_index: List[Tuple[str, str]],  # [(uri, label), ...]
+    esco_index: List[Tuple[str, str]],
 ) -> Retriever:
-    """
-    Offline retriever: embed phrase and ESCO labels and rank by cosine similarity.
-    For real deployment you would precompute ESCO label vectors and cache them.
-    Here we keep it simple/transparent.
-    """
-    # Precompute vectors once
+
     labels = [lbl for _, lbl in esco_index]
     label_vecs = encoder.embed(labels)
 
@@ -329,10 +296,6 @@ def make_local_embedding_retriever(
 
     return _r
 
-
-# -------------------------
-# Decision rules + LLM verify
-# -------------------------
 
 def decide_skill(
     phrase: str,
@@ -362,7 +325,6 @@ def decide_skill(
         _print_decision(d, cfg)
         return d
 
-    # ambiguous -> LLM
     from schema_mapping_common.data_structures import CanonicalProperty
 
     top = candidates[:3]
@@ -383,7 +345,6 @@ def decide_skill(
         candidates=props,
     )
 
-    # If LLM returns a valid option with enough confidence, prefer it
     if chosen_key and llm_conf >= cfg.llm_min_conf_accept:
         chosen = next((t for t in top if t.uri == chosen_key), None)
         if chosen:
@@ -398,7 +359,6 @@ def decide_skill(
             _print_decision(d, cfg)
             return d
 
-    # else: fallback to top-1, but still record LLM rationale for audit
     d = SkillDecision(
         phrase,
         c1.uri,
@@ -424,10 +384,19 @@ def normalize_skills_in_canonical_jsonld(
     _print_skill_header(cfg, encoder_name=encoder_name, lang=lang, mode=mode)
 
     phrases = extract_skill_phrases(canonical)
+    exploded: List[str] = []
+    seen = set()
+    for p in phrases:
+        for atom in decompose_skill_phrase(p):
+            key = normalize_text(atom, keep_colon=False)
+            if key and key not in seen:
+                seen.add(key)
+                exploded.append(atom)
+
     decisions: List[SkillDecision] = []
     normalized: List[Dict[str, Any]] = []
 
-    for p in phrases:
+    for p in exploded:
         cands = retriever(p, cfg.k)
         d = decide_skill(p, cands, cfg=cfg)
         decisions.append(d)

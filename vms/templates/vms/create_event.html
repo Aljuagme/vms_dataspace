@@ -2,13 +2,39 @@
 {% block content %}
 <div class="card p-4 shadow-sm">
   <h2 class="mb-3">Create Event</h2>
+    {% if volunteer.is_manager %}
+  {% if catalog_missing %}
+    <div class="alert alert-warning d-flex justify-content-between align-items-center">
+      <div>
+        <strong>Mapping catalog not detected.</strong>
+        Cross-platform JSON-LD export will be limited until you generate it.
+      </div>
+      <form method="post" action="{% url 'vms:generate_opportunity_catalog' %}">
+        {% csrf_token %}
+        <input type="hidden" name="title" value="{{ defaults.name }}">
+        <input type="hidden" name="description" value="{{ defaults.description }}">
+        <input type="hidden" name="meeting_point" value="{{ defaults.location }}">
+        <input type="hidden" name="duration" value="{{ defaults.duration }}">
+        <input type="hidden" name="max_volunteers" value="{{ defaults.max_attendee_capacity }}">
+          <input type="hidden" name="tshirt_size" value="{{ defaults.tshirt_size }}">
+
+        <button class="btn btn-outline-dark btn-sm">Generate Mapping Catalog</button>
+      </form>
+    </div>
+  {% else %}
+    <div class="alert alert-success">
+      <strong>Mapping catalog active</strong>.
+    </div>
+  {% endif %}
+{% endif %}
+
 
   <form method="post" class="row g-3">
     {% csrf_token %}
 
     <div class="col-md-6">
-      <label class="form-label">Event name</label>
-      <input type="text" name="name" class="form-control" value="{{ defaults.name }}">
+      <label class="form-label">Title</label>
+      <input type="text" name="title" class="form-control" value="{{ defaults.name }}">
     </div>
 
     <div class="col-md-12">
@@ -17,8 +43,8 @@
     </div>
 
     <div class="col-md-6">
-      <label class="form-label">Location</label>
-      <input type="text" name="location" class="form-control" value="{{ defaults.location }}">
+      <label class="form-label">Meeting Point</label>
+      <input type="text" name="meeting_point" class="form-control" value="{{ defaults.location }}">
     </div>
 
     <div class="col-md-3">
@@ -26,24 +52,140 @@
       <input type="number" name="duration" class="form-control" min="1" value="{{ defaults.duration }}">
     </div>
 
-    <div class="col-md-12">
-      <label class="form-label">Skills required</label>
-      <input type="text" name="skills" class="form-control" placeholder="Comma separated, e.g. First Aid, Team Leadership">
+    <div class="col-md-3">
+      <label class="form-label">Maximum Number of Volunteers</label>
+      <input type="number" name="max_volunteers" min="1" value="{{ defaults.max_attendee_capacity }}" class="form-control" placeholder="Capacity ..">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">T-Shirt Size</label>
+      <input type="text" name="tshirt_size" class="form-control" value="M">
     </div>
 
     <div class="col-md-12 form-check">
-      <input type="checkbox" name="expose" id="expose" class="form-check-input">
+      <input type="checkbox" name="expose" id="expose" class="form-check-input" checked>
       <label class="form-check-label" for="expose">Cross-Platform Visibility</label>
     </div>
 
-    <div class="col-md-12 form-check">
-      <input type="checkbox" name="prioritize" id="prioritize" class="form-check-input">
-      <label class="form-check-label" for="prioritize">Prioritize Local Volunteers</label>
-    </div>
+
 
     <div class="col-md-12">
       <button class="btn btn-success">Create Event</button>
     </div>
   </form>
 </div>
+
+{% if pipeline_result or pipeline_debug %}
+  <hr class="my-4">
+
+  <div class="card p-4 shadow-sm">
+    <h3 class="mb-3">Pipeline Output</h3>
+
+    {# 1) Schema mapping log #}
+    {% if pipeline_debug and pipeline_debug.schema_log %}
+      <details class="mb-3" open>
+        <summary class="fw-semibold">1) Schema mapping log (missing fields + structure)</summary>
+<pre id="schema-log" class="small mt-2 p-3 bg-light border rounded log-pre" style="white-space: pre-wrap;">
+{{ pipeline_debug.schema_log }}
+</pre>      </details>
+    {% endif %}
+
+
+    {# 2) ESCO normalization log #}
+    {% if pipeline_debug and pipeline_debug.skill_log %}
+      <details class="mb-3">
+        <summary class="fw-semibold">2) ESCO skill normalization log</summary>
+<pre id="skill-log" class="small mt-2 p-3 bg-light border rounded log-pre" style="white-space: pre-wrap;">
+{{ pipeline_debug.skill_log }}
+</pre>
+      </details>
+    {% endif %}
+
+    {# 3) Final Canonical JSON-LD #}
+    {% if pipeline_result and pipeline_result.canonical_jsonld %}
+      <details open class="mb-3">
+        <summary class="fw-semibold">3) Final Canonical JSON-LD</summary>
+        <pre class="small mt-2 p-3 bg-light border rounded" style="white-space: pre-wrap;">{{ pipeline_result.canonical_jsonld|pprint }}</pre>
+      </details>
+    {% endif %}
+
+  </div>
+{% endif %}
+<script>
+(function () {
+  function decoratePre(preEl, opts) {
+    if (!preEl) return;
+
+    const text = preEl.textContent || "";
+    const lines = text.split("\n");
+
+    const out = document.createElement("div");
+
+    for (let line of lines) {
+      const span = document.createElement("span");
+      span.className = "log-line";
+      span.textContent = line;
+
+      const low = line.toLowerCase();
+
+      // Hide noisy debug lines
+      if (opts.hideApply && (low.startsWith("[apply]") || low.startsWith("[contact]"))) {
+        span.classList.add("log-hidden");
+      }
+
+      // Hide tshirt field block/line
+      if (opts.hideTshirt && low.includes("source field: tshirt_size")) {
+        span.classList.add("log-hidden");
+      }
+      if (opts.hideTshirt && low.includes("tshirt_size")) {
+        // if you want to be aggressive, hide any line mentioning it
+        // comment out if too aggressive
+        span.classList.add("log-hidden");
+      }
+
+      // Highlight rejects
+      if (low.includes("decision: rejected") || low.includes("decision: reject")) {
+        span.classList.add("log-reject");
+      }
+
+      // Highlight LLM usage
+      if (low.includes("llm override") || low.includes("ambiguous → llm") || low.includes("llm chose")) {
+        span.classList.add("log-llm");
+      }
+
+      // Highlight winner mapping line
+      // schema log format: "Decision: ACCEPTED -> schema:location ..."
+      if (low.includes("decision: accepted") && low.includes("->")) {
+        span.classList.add("log-winner");
+      }
+
+      // De-emphasize candidate list lines
+      if (low.trim().match(/^\d+\.\s/) || low.includes("top candidates:") || low.includes("sem=") || low.includes("lex=")) {
+        span.classList.add("log-muted");
+      }
+
+      out.appendChild(span);
+    }
+
+    preEl.textContent = "";
+    preEl.appendChild(out);
+  }
+
+  decoratePre(document.getElementById("schema-log"), { hideApply: true, hideTshirt: true });
+  decoratePre(document.getElementById("skill-log"),  { hideApply: false, hideTshirt: false });
+})();
+</script>
+
+    <style>
+  /* make each log line "highlightable" */
+  .log-pre { line-height: 1.35; }
+
+  .log-line { display: block; padding: 1px 0; border-radius: 4px; }
+  .log-winner { background: rgba(25,135,84,.14); font-weight: 600; }      /* green-ish */
+  .log-llm    { background: rgba(13,110,253,.12); }                       /* blue-ish */
+  .log-reject { background: rgba(220,53,69,.12); font-weight: 600; }      /* red-ish */
+  .log-muted  { opacity: .65; }
+  .log-hidden { display: none !important; }
+</style>
+
 {% endblock %}

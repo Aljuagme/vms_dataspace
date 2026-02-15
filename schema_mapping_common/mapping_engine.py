@@ -1,16 +1,3 @@
-"""
-mapping_engine.py
-=================
-Shared proposal engine for schema mapping.
-
-This centralizes the propose-loop used by both volunteer.py and opportunity.py:
-- flatten payload
-- rank candidates (scoring.rank_candidates)
-- decide mapping (utilities.decide_mapping)
-- optional composite decomposition
-- optional LLM disambiguation
-- consistent printing / logging
-"""
 
 from __future__ import annotations
 
@@ -23,12 +10,8 @@ from schema_mapping_common.scoring import SemanticEncoder, rank_candidates
 from schema_mapping_common.llm_integration import ollama_select_candidate
 
 
-# -----------------------------
-# Composite hooks
-# -----------------------------
-
-CompositeDetector = Callable[[str, Any], bool]         # (source_path, example) -> bool
-Segmenter = Callable[[str], List[str]]                # text -> segments
+CompositeDetector = Callable[[str, Any], bool]
+Segmenter = Callable[[str], List[str]]
 
 
 @dataclass(frozen=True)
@@ -40,17 +23,12 @@ class MappingEngineConfig:
 
     # Composite behaviour
     enable_composite: bool = False
-    composite_min_len: int = 70   # only used by default detector if you use it
-    print_width: int = 90         # pretty printing
+    composite_min_len: int = 70
+    print_width: int = 90
 
 
 def _default_is_composite(source_path: str, example: Any, *, min_len: int = 70) -> bool:
-    """
-    Conservative default composite detector:
-    - only strings
-    - long-ish
-    - multi-sentence OR multiple "anchor-like" markers
-    """
+
     if not isinstance(example, str):
         return False
     t = example.strip()
@@ -64,25 +42,16 @@ def _default_is_composite(source_path: str, example: Any, *, min_len: int = 70) 
     ]
     anchor_hits = sum(1 for a in anchors if a in low)
 
-    # sentence-ish heuristic without importing re in this tiny helper
     sentence_hits = (t.count(".") + t.count("!") + t.count("?")) >= 1
     return anchor_hits >= 2 or sentence_hits
 
 
 def _default_split_into_segments(text: str) -> List[str]:
-    """
-    Simple segmenter:
-    - split by punctuation-ish boundaries
-    - keep lines manageable
-    - stable de-dup
-    Note: Opportunity already has a better one. If you want that exact one,
-    inject it via the segmenter hook from utilities.
-    """
+
     raw = str(text).strip()
     if not raw:
         return []
 
-    # cheap split
     parts: List[str] = []
     buf = ""
     for ch in raw:
@@ -143,12 +112,7 @@ def _maybe_llm_override(
     best_target: Optional[CanonicalProperty],
     cfg: MappingEngineConfig,
 ) -> Tuple[str, Optional[CanonicalProperty], str]:
-    """
-    Shared ambiguity handler.
-    - Only triggers for AMBIGUOUS
-    - Uses top-3 candidates
-    - Accepts override only if confidence >= cfg.llm_min_conf_accept
-    """
+
     if status != "AMBIGUOUS":
         return status, best_target, ""
 
@@ -176,14 +140,10 @@ def propose_mappings_generic(
     composite_detector: Optional[CompositeDetector] = None,
     segmenter: Optional[Segmenter] = None,
 ) -> List[MappingProposal]:
-    """
-    One proposal engine for ALL entities.
-    The entity-specific files just provide:
-      - entity name
-      - canonical candidates list
-      - whether composite is enabled
-      - (optionally) better composite detector/segmenter
-    """
+
+
+    IGNORED_SOURCE_FIELDS = set()
+
     cfg = cfg or MappingEngineConfig()
     composite_detector = composite_detector or (lambda p, e: _default_is_composite(p, e, min_len=cfg.composite_min_len))
     segmenter = segmenter or _default_split_into_segments
@@ -193,7 +153,10 @@ def propose_mappings_generic(
     proposals: List[MappingProposal] = []
 
     for source_path, example in flatten_payload(local_payload):
-        # Composite: decompose and map segments individually
+        base_key = source_path.split(".", 1)[0]  # handles "tshirt_size" and "tshirt_size.foo"
+        if base_key in IGNORED_SOURCE_FIELDS:
+            continue
+
         if cfg.enable_composite and composite_detector(source_path, example):
             proposals.append(
                 MappingProposal(
@@ -227,7 +190,6 @@ def propose_mappings_generic(
 
                 status, best, note = decide_mapping(ranked, tau=cfg.tau, margin=cfg.margin)
 
-                # shared LLM disambiguation
                 if status == "AMBIGUOUS":
                     status2, best2, llm_note = _maybe_llm_override(
                         status=status,
@@ -261,7 +223,6 @@ def propose_mappings_generic(
 
             continue
 
-        # Normal (non-composite) path
         ranked = rank_candidates(
             encoder,
             candidates,
