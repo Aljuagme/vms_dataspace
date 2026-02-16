@@ -20,13 +20,12 @@ from schema_mapping_common.utilities import (
     extract_weekdays,
     TIME_RE,
     EMAIL_RE,
-    # subgroup helpers
     construct_postal_address_from_sources,
     construct_availability_from_sources,
     ensure_location_obj,
     merge_list_unique,
     parse_contact_point,
-    merge_contact_points, finalize_and_order_canonical, parse_postal_address, parse_place_and_address,
+    merge_contact_points, finalize_and_order_canonical, parse_place_and_address,
 )
 
 from schema_mapping_common.scoring import SemanticEncoder

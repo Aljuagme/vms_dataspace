@@ -5,8 +5,6 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from sentence_transformers import SentenceTransformer
-
 from schema_mapping_common.data_structures import CanonicalProperty, CandidateScore
 from schema_mapping_common.utilities import (
     # shared utils
@@ -28,10 +26,16 @@ class SemanticEncoder:
 
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.model_name = model_name
-        self.model = SentenceTransformer(model_name)
+        self.model = None  # lazy
+
+    def _ensure_loaded(self):
+        if self.model is None:
+            from sentence_transformers import SentenceTransformer
+            self.model = SentenceTransformer(self.model_name)
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         """Embed texts into vectors."""
+        self._ensure_loaded()
         vecs = self.model.encode(texts, normalize_embeddings=True)
         return [v.tolist() for v in vecs]
 
@@ -39,6 +43,7 @@ class SemanticEncoder:
     def cosine(a: List[float], b: List[float]) -> float:
         """Cosine similarity (assuming normalized embeddings)."""
         return float(sum(x * y for x, y in zip(a, b)))
+
 
 
 # ----------------------------
@@ -52,8 +57,8 @@ class ScoringWeights:
       combined = sem_w * semantic + lex_w * lexical + boost_w * boost + boost
     where the extra '+ boost' makes boosts act as stabilizers.
     """
-    sem_w: float = 0.75
-    lex_w: float = 0.20
+    sem_w: float = 0.8
+    lex_w: float = 0.15
     boost_w: float = 0.5
 
 
@@ -61,28 +66,28 @@ class ScoringWeights:
 class BoostConfig:
 
     # name-semantic boost threshold
-    name_sim_threshold: float = 0.3
-    name_boost_value: float = 0.14
+    name_sim_threshold: float = 0.2
+    name_boost_value: float = 0.10
 
     # token overlap
-    token_overlap_cap: float = 0.18
-    token_overlap_step: float = 0.06
+    token_overlap_cap: float = 0.10
+    token_overlap_step: float = 0.05
 
     # type cues
-    email_boost: float = 0.40
-    phone_boost: float = 0.22
-    date_boost: float = 0.40
-    time_boost: float = 0.35
-    time_range_boost: float = 0.28
-    weekday_boost: float = 0.28
-    list_boost: float = 0.15
-    int_boost: float = 0.25
+    email_boost: float = 0.20
+    phone_boost: float = 0.10
+    date_boost: float = 0.20
+    time_boost: float = 0.20
+    time_range_boost: float = 0.20
+    weekday_boost: float = 0.20
+    list_boost: float = 0.10
+    int_boost: float = 0.20
 
-    anchor_strong: float = 0.50
-    anchor_time: float = 0.4
-    anchor_skills: float = 0.4
-    anchor_location: float = 0.4
-    anchor_penalty_desc: float = -0.08
+    anchor_strong: float = 0.10
+    anchor_time: float = 0.2
+    anchor_skills: float = 0.5
+    anchor_location: float = 0.2
+    anchor_penalty_desc: float = -0.1
 
 
 def _contains_weekday(text: str) -> bool:
