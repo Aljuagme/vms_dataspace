@@ -3,20 +3,16 @@
 {% block content %}
   <h1>Network Directory</h1>
   <h2>Number of Organizations present in the Federated Network: {{ providers|length }}</h2>
-    <h3>Entry Point: </h3>
-    <p>https:federated.example.org/api/discovery</p>
+  <h3>Entry Point: </h3>
+  <p>https:federated.example.org/api/discovery</p>
 
   <div class="grid">
     {% for p in providers %}
-      <div class="card card-link"
-
-         style="text-decoration:none; color:inherit;">
+      <div class="card card-link" style="text-decoration:none; color:inherit;">
         <h3>{{ p.name }}</h3>
-
         <div class="muted">{{ p.short_description }}</div>
-      <br>
-      <div class="muted">{{ p.connector_endpoint }}</div>
-
+        <br>
+        <div class="muted">{{ p.connector_endpoint }}</div>
 
         <a href="{% url 'provider_detail' p.platform_key %}">
           View self-description (JSON-LD) →
@@ -32,28 +28,138 @@
   <h2>Federated opportunities</h2>
   <p class="muted">Discovery of opportunities shared to the federation.</p>
 
-  <form method="get" style="margin: 12px 0 18px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    <input
-      type="text"
-      name="skill"
-      value="{{ skill_query|default:'' }}"
-      placeholder="Search by skill… e.g., emergency care"
-      style="padding:10px 12px; min-width:320px; border:1px solid #ddd; border-radius:10px;"
-    >
-    <button type="submit" style="padding:10px 14px; border-radius:10px; border:1px solid #ddd; cursor:pointer;">
-      Search
-    </button>
+  <form method="get" class="filterbar" id="filtersForm">
 
-    {% if skill_query %}
-      <a href="?" class="muted" style="text-decoration:none;">Clear</a>
-    {% endif %}
-  </form>
+  {# Organizations #}
+    <div class="filter-days" style="margin-top:12px;">
+      <div class="filter-days-title">
+        <span class="muted"><strong>Organizations</strong></span>
+      </div>
 
-  {% if skill_query %}
-    <div class="muted" style="margin-bottom:10px;">
-      Matching opportunities: <strong>{{ matched_total }}</strong>
+      <div class="days-grid">
+        {% for p in providers %}
+          <label class="day-pill">
+            <input
+              type="checkbox"
+              name="provider"
+              value="{{ p.platform_key }}"
+              {% if selected_providers and p.platform_key in selected_providers %}checked{% endif %}
+            >
+            <span>{{ p.name }}</span>
+          </label>
+        {% endfor %}
+      </div>
     </div>
 
+
+    {# Days of week #}
+    <div class="filter-days">
+      <div class="filter-days-title">
+        <span class="muted"><strong>Days of week</strong></span>
+      </div>
+
+      <div class="filter-days-actions">
+        <button type="button" class="button-days" onclick="setDays('all')">All</button>
+        <button type="button" class="button-days" onclick="setDays('weekdays')">Weekdays</button>
+        <button type="button" class="button-days" onclick="setDays('weekend')">Weekend</button>
+        <button type="button" class="button-days" onclick="setDays('none')">None</button>
+      </div>
+
+      <div class="days-grid">
+        <label class="day-pill">
+          <input type="checkbox" name="day" value="Monday"
+                 {% if selected_days and "monday" in selected_days %}checked{% endif %}>
+          <span>Mon</span>
+        </label>
+
+        <label class="day-pill">
+          <input type="checkbox" name="day" value="Tuesday"
+                 {% if selected_days and "tuesday" in selected_days %}checked{% endif %}>
+          <span>Tue</span>
+        </label>
+
+        <label class="day-pill">
+          <input type="checkbox" name="day" value="Wednesday"
+                 {% if selected_days and "wednesday" in selected_days %}checked{% endif %}>
+          <span>Wed</span>
+        </label>
+
+        <label class="day-pill">
+          <input type="checkbox" name="day" value="Thursday"
+                 {% if selected_days and "thursday" in selected_days %}checked{% endif %}>
+          <span>Thu</span>
+        </label>
+
+        <label class="day-pill">
+          <input type="checkbox" name="day" value="Friday"
+                 {% if selected_days and "friday" in selected_days %}checked{% endif %}>
+          <span>Fri</span>
+        </label>
+
+        <label class="day-pill">
+          <input type="checkbox" name="day" value="Saturday"
+                 {% if selected_days and "saturday" in selected_days %}checked{% endif %}>
+          <span>Sat</span>
+        </label>
+
+        <label class="day-pill">
+          <input type="checkbox" name="day" value="Sunday"
+                 {% if selected_days and "sunday" in selected_days %}checked{% endif %}>
+          <span>Sun</span>
+        </label>
+      </div>
+    </div>
+
+
+      <div class="filter-row filter-row--primary">
+      <div class="filter-row-left">
+        <div class="filter-kicker">
+          <span class="muted"><strong>Filters</strong></span>
+          <span class="muted" style="opacity:.75;">(skill + days + organizations)</span>
+        </div>
+
+        <input
+          type="text"
+          name="skill"
+          value="{{ skill_query|default:'' }}"
+          placeholder="Search by skill… e.g., emergency care"
+          class="filter-input"
+        >
+
+      </div>
+
+      <div class="filter-row-actions">
+        <button type="submit" class="button-search" title="Apply skill + day + organization filters">
+          Apply filters
+        </button>
+
+        {% if skill_query or selected_days or selected_providers %}
+          <a href="?" class="filter-clear">Clear</a>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+
+  {# Results summary #}
+  {% if skill_query or selected_days or selected_providers %}
+    <div class="muted" style="margin-bottom:10px;">
+      Matching opportunities: <strong>{{ matched_total }}</strong>
+      {% if skill_query %}
+        <span style="opacity:.75;"> · skill:</span>
+        <strong>{{ skill_query }}</strong>
+      {% endif %}
+      {% if selected_days %}
+        <span style="opacity:.75;"> · days:</span>
+        <strong>{{ selected_days|join:", " }}</strong>
+      {% endif %}
+      {% if selected_providers %}
+        <span style="opacity:.75;"> · orgs:</span>
+        <strong>{{ selected_providers|join:", " }}</strong>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if skill_query %}
     {% if skill_candidates %}
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;">
         {% for c in skill_candidates %}
@@ -74,117 +180,129 @@
     {% for org, events in rows %}
       {% for e in events %}
         <div class="card opp-card">
-  <h3 class="opp-title">{{ e.name }}</h3>
+          <h3 class="opp-title">{{ e.name }}</h3>
 
-  {% if e.description %}
-    <p class="muted opp-desc">{{ e.description }}</p>
-  {% endif %}
+          {% if e.description %}
+            <p class="muted opp-desc">{{ e.description }}</p>
+          {% endif %}
 
-  <div class="opp-meta">
-    <div class="muted">📍 {{ e.location|default:"Remote / not specified" }}</div>
-    <div class="muted">⏱ {{ e.duration_hours }} hour(s)</div>
+          <div class="opp-meta">
+            <div class="muted">📍 {{ e.location|default:"Remote / not specified" }}</div>
+            <div class="muted">⏱ {{ e.duration_hours }} hour(s)</div>
 
-    {% if e.start_date %}
-      <div class="muted">🗓 Start: {{ e.start_date }}</div>
-    {% endif %}
-    {% if e.end_date %}
-      <div class="muted">🗓 End: {{ e.end_date }}</div>
-    {% endif %}
+            {% if e.start_date %}
+              <div class="muted">🗓 Start: {{ e.start_date }}</div>
+            {% endif %}
+            {% if e.end_date %}
+              <div class="muted">🗓 End: {{ e.end_date }}</div>
+            {% endif %}
 
-    {% if e.max_capacity %}
-      <div class="muted">👥 Capacity: {{ e.max_capacity }}</div>
-    {% endif %}
-  </div>
+            {% if e.max_capacity %}
+              <div class="muted">👥 Capacity: {{ e.max_capacity }}</div>
+            {% endif %}
+          </div>
 
-  {% if e.address_text %}
-    <div class="muted" style="margin-top:8px;">
-      <strong>Address:</strong> {{ e.address_text }}
-    </div>
-  {% endif %}
+          {% if e.address_text %}
+            <div class="muted" style="margin-top:8px;">
+              <strong>Address:</strong> {{ e.address_text }}
+            </div>
+          {% endif %}
 
-  {% if e.organizer_name or e.contact_email or e.contact_phone %}
-    <div class="opp-detail" style="margin-top:10px;">
-      <div class="muted"><strong>Organizer:</strong> {{ e.organizer_name|default:"(not specified)" }}</div>
+          {% if e.organizer_name or e.contact_email or e.contact_phone %}
+            <div class="opp-detail" style="margin-top:10px;">
+              <div class="muted"><strong>Organizer:</strong> {{ e.organizer_name|default:"(not specified)" }}</div>
 
-      {% if e.contact_name %}
-        <div class="muted"><strong>Contact:</strong> {{ e.contact_name }}</div>
-      {% endif %}
-      {% if e.contact_email %}
-        <div class="muted"><strong>Email:</strong> {{ e.contact_email }}</div>
-      {% endif %}
-      {% if e.contact_phone %}
-        <div class="muted"><strong>Phone:</strong> {{ e.contact_phone }}</div>
-      {% endif %}
-    </div>
-  {% endif %}
+              {% if e.contact_name %}
+                <div class="muted"><strong>Contact:</strong> {{ e.contact_name }}</div>
+              {% endif %}
+              {% if e.contact_email %}
+                <div class="muted"><strong>Email:</strong> {{ e.contact_email }}</div>
+              {% endif %}
+              {% if e.contact_phone %}
+                <div class="muted"><strong>Phone:</strong> {{ e.contact_phone }}</div>
+              {% endif %}
+            </div>
+          {% endif %}
 
-  {% if e.time_blocks or e.days_of_week %}
-    <div class="opp-detail" style="margin-top:10px;">
-      {% if e.time_blocks %}
-        <div class="muted">
-          <strong>Time blocks:</strong>
-          {{ e.time_blocks|join:", " }}
-        </div>
-      {% endif %}
-      {% if e.days_of_week %}
-        <div class="muted">
-          <strong>Days:</strong>
-          {{ e.days_of_week|join:", " }}
-        </div>
-      {% endif %}
-    </div>
-  {% endif %}
+          {% if e.time_blocks or e.days_of_week %}
+            <div class="opp-detail" style="margin-top:10px;">
+              {% if e.time_blocks %}
+                <div class="muted">
+                  <strong>Time blocks:</strong>
+                  {{ e.time_blocks|join:", " }}
+                </div>
+              {% endif %}
+              {% if e.days_of_week %}
+                <div class="muted">
+                  <strong>Days:</strong>
+                  {{ e.days_of_week|join:", " }}
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
 
-  {% if e.skills_labels %}
-    <div class="opp-skills">
-      {% for s in e.skills_labels %}
-        <span class="chip">{{ s }}</span>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="muted" style="margin-top:10px;">No skills specified.</div>
-  {% endif %}
+          {% if e.skills_labels %}
+            <div class="opp-skills">
+              {% for s in e.skills_labels %}
+                <span class="chip">{{ s }}</span>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="muted" style="margin-top:10px;">No skills specified.</div>
+          {% endif %}
 
-  <p class="muted" style="margin-top:10px;">
-    <a href="{% url 'opportunity_detail' org.platform_key e.id %}">
-      Show JSON-LD →
-    </a>
-  </p>
+          <p class="muted" style="margin-top:10px;">
+            <a href="{% url 'opportunity_detail' org.platform_key e.id %}">
+              Show JSON-LD →
+            </a>
+          </p>
 
-  <div class="muted opp-provider" style="margin-top:12px;">
-    Provider: {{ org.platform_key }}
-  </div>
+          <div class="muted opp-provider" style="margin-top:12px;">
+            Provider: {{ org.platform_key }}
+          </div>
 
-        {% if volunteer and my_org_key %}
-  <div style="margin-top:12px;">
-    {% if org.platform_key == my_org_key and e.db_id %}
-      <form method="post" action="{% url 'vms:register_event' volunteer.id e.db_id %}">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-primary">Local Register</button>
-      </form>
-    {% else %}
-      <form method="post" action="{% url 'vms:federated_register_event' volunteer.id org.platform_key e.id %}">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-outline-primary">Federated Register</button>
-      </form>
-    {% endif %}
-  </div>
-{% else %}
-  <div class="muted" style="margin-top:10px;">Log in to register.</div>
-{% endif %}
+          {% if volunteer and my_org_key %}
+            <div style="margin-top:12px;">
+              {% if org.platform_key == my_org_key and e.db_id %}
+                <form method="post" action="{% url 'vms:register_event' volunteer.id e.db_id %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-primary">Local Register</button>
+                </form>
+              {% else %}
+                <form method="post" action="{% url 'vms:federated_register_event' volunteer.id org.platform_key e.id %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-outline-primary">Federated Register</button>
+                </form>
+              {% endif %}
+            </div>
+          {% else %}
+            <div class="muted" style="margin-top:10px;">Log in to register.</div>
+          {% endif %}
 
-
-  <script type="application/ld+json">
+          <script type="application/ld+json">
 {{ e.jsonld_str|safe }}
-  </script>
-</div>
-
+          </script>
+        </div>
       {% endfor %}
     {% endfor %}
   </div>
 
-  <style>
+  <script>
+    function setDays(mode){
+      const boxes = document.querySelectorAll('input[type="checkbox"][name="day"]');
+      const weekdays = new Set(["Monday","Tuesday","Wednesday","Thursday","Friday"]);
+      const weekend = new Set(["Saturday","Sunday"]);
 
+      boxes.forEach(b => {
+        if(mode === "all") b.checked = true;
+        else if(mode === "none") b.checked = false;
+        else if(mode === "weekdays") b.checked = weekdays.has(b.value);
+        else if(mode === "weekend") b.checked = weekend.has(b.value);
+      });
+    }
+  </script>
+
+  <style>
     .opp-grid{
       display:grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -196,23 +314,6 @@
     }
 
     .opp-card{ position: relative; }
-
-    .opp-top{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap: 12px;
-    }
-
-    .opp-badges{ display:flex; gap:8px; align-items:center; }
-    .badge{
-      font-size: 12px;
-      padding: 4px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(0,0,0,0.08);
-      background: rgba(0,0,0,0.03);
-    }
-
     .opp-title{ margin-top: 10px; }
 
     .opp-desc{
@@ -242,16 +343,162 @@
       background: rgba(0,0,0,0.02);
       white-space: nowrap;
     }
-
     .opp-provider{ opacity: 0.85; }
-      .opp-detail{
-    padding: 10px 12px;
-    border: 1px solid rgba(0,0,0,0.06);
-    border-radius: 10px;
-    background: rgba(0,0,0,0.015);
-  }
-  .opp-meta .muted{
-    white-space: nowrap;
-  }
+    .opp-detail{
+      padding: 10px 12px;
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 10px;
+      background: rgba(0,0,0,0.015);
+    }
+    .opp-meta .muted{ white-space: nowrap; }
+
+    /* ---- Filter UI ---- */
+    .filterbar{
+      margin: 12px 0 18px 0;
+      display:flex;
+      flex-direction:column;
+      gap: 12px;
+    }
+
+    .filter-row{
+      display:flex;
+      gap:12px;
+      align-items:flex-start;
+      justify-content:space-between;
+      flex-wrap:wrap;
+    }
+
+    /* Primary "Filters" row */
+    .filter-row--primary{
+      padding: 12px;
+      border: 1px solid rgba(0,0,0,0.10);
+      border-radius: 14px;
+      background: rgba(0,0,0,0.015);
+    }
+
+    .filter-row-left{
+      display:flex;
+      flex-direction:column;
+      gap: 8px;
+      min-width: 320px;
+      flex: 1 1 480px;
+    }
+
+    .filter-kicker{
+      display:flex;
+      gap:10px;
+      align-items:baseline;
+      flex-wrap:wrap;
+    }
+
+    .filter-hint{
+      font-size: 12px;
+      opacity: .85;
+    }
+
+    .filter-row-actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:flex-end;
+      flex: 0 0 auto;
+      padding-top: 22px; /* aligns with input height visually */
+    }
+    @media (max-width: 700px){
+      .filter-row-actions{ padding-top: 0; }
+    }
+
+    .filter-input{
+      padding:10px 12px;
+      border:1px solid rgba(0,0,0,0.18);
+      border-radius:12px;
+      background: #fff;
+      outline: none;
+      width: 100%;
+      max-width: 720px;
+    }
+    .filter-input:focus{
+      border-color: rgba(0,0,0,0.35);
+      box-shadow: 0 0 0 4px rgba(0,0,0,0.06);
+    }
+
+    .filter-clear{
+      text-decoration:none;
+      opacity:.85;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,0.08);
+      background: rgba(0,0,0,0.02);
+    }
+    .filter-clear:hover{
+      background: rgba(0,0,0,0.04);
+      opacity: 1;
+    }
+
+    .filter-days{
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 14px;
+      padding: 12px 12px 10px 12px;
+      background: rgba(0,0,0,0.01);
+    }
+    .filter-days-title{
+      display:flex;
+      align-items:baseline;
+      gap:8px;
+      margin-bottom: 10px;
+    }
+    .filter-days-actions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-bottom: 10px;
+    }
+
+    /* Buttons: clearly "apply all filters" */
+    .button-search{
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,0,0,0.18);
+      background: rgba(0,0,0,0.08);
+      cursor:pointer;
+      font-weight: 700;
+        color: revert;
+    }
+    .button-search:hover{ background: rgba(0,0,0,0.11); }
+
+    .button-days{
+      font-size: 12px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,0,0,0.16);
+      background: rgba(0,0,0,0.055);
+      cursor: pointer;
+        color: revert;
+    }
+    .button-days:hover{ background: rgba(0,0,0,0.08); }
+
+    .days-grid{
+      display:flex;
+      flex-wrap:wrap;
+      gap: 8px;
+    }
+    .day-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,0,0,0.08);
+      background: rgba(0,0,0,0.02);
+      cursor:pointer;
+      user-select:none;
+      font-size: 13px;
+    }
+    .day-pill input{
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: auto;
+    }
   </style>
 {% endblock %}

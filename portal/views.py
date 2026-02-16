@@ -27,6 +27,81 @@ def _esco_uri_to_compact(uri: str) -> str:
         return f"esco:{m.group(2)}"
     return s
 
+_DAY_ALIASES = {
+    "mon": "monday", "monday": "monday",
+    "tue": "tuesday", "tues": "tuesday", "tuesday": "tuesday",
+    "wed": "wednesday", "weds": "wednesday", "wednesday": "wednesday",
+    "thu": "thursday", "thur": "thursday", "thurs": "thursday", "thursday": "thursday",
+    "fri": "friday", "friday": "friday",
+    "sat": "saturday", "saturday": "saturday",
+    "sun": "sunday", "sunday": "sunday",
+}
+
+_NUM_TO_DAY = {
+    "0": "monday",
+    "1": "tuesday",
+    "2": "wednesday",
+    "3": "thursday",
+    "4": "friday",
+    "5": "saturday",
+    "6": "sunday",
+}
+
+def _normalize_day_token(v: str) -> str | None:
+    """
+    Accepts: "Monday", "mon", "MONDAY", "0".."6"
+    Returns normalized full day name lowercase, or None if unknown.
+    """
+    s = str(v or "").strip().lower()
+    if not s:
+        return None
+    if s in _NUM_TO_DAY:
+        return _NUM_TO_DAY[s]
+    # remove punctuation/spaces to be tolerant: "Mon." -> "mon"
+    s2 = re.sub(r"[^a-z]", "", s)
+    if s2 in _DAY_ALIASES:
+        return _DAY_ALIASES[s2]
+    return None
+
+def _extract_days_of_week_from_doc(doc: dict) -> set[str]:
+    """
+    Pull days from vms:commitment/vms:daysOfWeek or top-level vms:daysOfWeek.
+    Returns normalized set like {"monday","wednesday"}.
+    """
+    def _get(d, *keys):
+        for k in keys:
+            if isinstance(d, dict) and k in d and d.get(k) not in (None, "", [], {}):
+                return d.get(k)
+        return None
+
+    commitment = _get(doc, "vms:commitment", "commitment") or {}
+    days = _get(commitment, "vms:daysOfWeek", "daysOfWeek")
+
+    if not days:
+        days = _get(doc, "vms:daysOfWeek", "daysOfWeek")
+
+    if days is None:
+        return set()
+
+    if not isinstance(days, list):
+        days = [days]
+
+    out: set[str] = set()
+    for item in days:
+        if isinstance(item, dict):
+            # if someone encodes it as {"@value": "..."} or {"name": "..."} etc.
+            cand = (
+                item.get("@value")
+                or item.get("schema:name") or item.get("name")
+                or item.get("label")
+            )
+            n = _normalize_day_token(cand) if cand is not None else None
+        else:
+            n = _normalize_day_token(str(item))
+        if n:
+            out.add(n)
+    return out
+
 
 def _extract_skill_terms_from_doc(doc: dict) -> tuple[set[str], set[str]]:
 
@@ -177,6 +252,14 @@ def portal_directory(request):
 
     volunteer = None
     my_org_key = None
+
+    # --- Provider filter (0/1/multiple) ---
+    # Supports: ?provider=demorg&provider=mima
+    selected_providers = [p.strip() for p in request.GET.getlist("provider") if (p or "").strip()]
+    selected_providers_set = set(selected_providers)
+
+    if selected_providers_set:
+        providers = providers.filter(platform_key__in=selected_providers_set)
     vid = request.session.get("volunteer_id")
     if vid:
         try:
@@ -194,6 +277,21 @@ def portal_directory(request):
 
     rows = []
     matched_total = 0
+
+    # --- Day filter (0/1/multiple) ---
+    # Supports: ?day=Monday&day=Wednesday  (preferred)
+    # Also:     ?days=Monday,Wednesday
+    # Also:     numeric 0..6 where 0=Monday .. 6=Sunday
+    selected_days_raw = []
+    selected_days_raw += request.GET.getlist("day")
+    selected_days_raw += request.GET.getlist("days")  # if someone uses repeated 'days='
+    if not selected_days_raw:
+        days_csv = (request.GET.get("days") or "").strip()
+        if days_csv:
+            selected_days_raw = [p.strip() for p in days_csv.split(",") if p.strip()]
+
+    selected_days = {d for d in (_normalize_day_token(x) for x in selected_days_raw) if d}
+
 
     for org in providers:
         pk = org.platform_key or ""
@@ -226,6 +324,14 @@ def portal_directory(request):
                     filtered.append(d)
             docs = filtered
 
+        if selected_days:
+            filtered = []
+            for d in docs:
+                doc_days = _extract_days_of_week_from_doc(d)
+                if doc_days.intersection(selected_days):
+                    filtered.append(d)
+            docs = filtered
+
         cards = []
         for d in docs:
             c = _jsonld_to_card(d)
@@ -238,10 +344,12 @@ def portal_directory(request):
 
     return render(request, "portal/directory.html", {
         "providers": providers,
+        "selected_providers": selected_providers,
         "rows": rows,
         "skill_query": skill_query,
         "skill_candidates": skill_candidates,
         "matched_total": matched_total,
+        "selected_days": sorted(selected_days),
 
         "volunteer": volunteer,
         "my_org_key": my_org_key,
