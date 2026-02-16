@@ -81,8 +81,7 @@ def _print_header(entity: str, encoder: SemanticEncoder, cfg: MappingEngineConfi
     print(f"SCHEMA MAPPING PROPOSAL FOR ENTITY: {entity}")
     print(f"Semantic encoder: {encoder.model_name}")
     print(f"tau={cfg.tau:.2f} | margin={cfg.margin:.2f} | k={cfg.k}")
-    print(f"LLM verifier: Ollama/{getattr(__import__('schema_mapping_common.llm_integration', fromlist=['MODEL']), 'MODEL', 'model')} "
-          f"(only for AMBIGUOUS; accept if conf>={cfg.llm_min_conf_accept:.2f})")
+    print(f"LLM verifier: Ollama/{getattr(__import__('schema_mapping_common.llm_integration', fromlist=['MODEL']), 'MODEL', 'model')} ")
     if cfg.enable_composite:
         print("Composite: enabled (will decompose long text blocks)")
     else:

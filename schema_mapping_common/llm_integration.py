@@ -22,6 +22,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 # -----------------------------------------------------------------------------
 # Remote (Groq) config (OpenAI-compatible)
 # -----------------------------------------------------------------------------
+
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
@@ -60,7 +61,7 @@ def _build_user_prompt(
     return {
         "task": "Select the best mapping target for a source field.",
         "source": {
-            "field_name": field_name,
+            #"field_name": field_name,
             "example_value": example_value,
         },
         "candidates": cand_list,
@@ -99,21 +100,24 @@ def _ollama_call(*, payload: dict) -> str:
 
 
 def _groq_call(*, payload: dict) -> str:
+
     if not GROQ_API_KEY:
-        raise RuntimeError(
-            "GROQ_API_KEY is missing. Set GROQ_API_KEY env var or switch LOCAL=True."
-        )
+        raise RuntimeError("GROQ_API_KEY missing")
 
     url = f"{GROQ_BASE_URL.rstrip('/')}/chat/completions"
+
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json",
     }
 
     r = requests.post(url, headers=headers, json=payload, timeout=120)
+
     r.raise_for_status()
     data = r.json()
+
     return data["choices"][0]["message"]["content"]
+
 
 
 def ollama_select_candidate(

@@ -58,7 +58,6 @@ def _print_skill_header(cfg: SkillEngineConfig, *, encoder_name: str, lang: str,
     print(f"tau={cfg.tau:.2f} | margin={cfg.margin:.2f} | k={cfg.k}")
     print(
         f"LLM verifier: Ollama/{getattr(__import__('schema_mapping_common.llm_integration', fromlist=['MODEL']), 'MODEL', 'model')}"
-        f" (only for AMBIGUOUS; accept if conf>={cfg.llm_min_conf_accept:.2f})"
     )
     print("=" * w)
 
