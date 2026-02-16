@@ -1,0 +1,29 @@
+[33m7a30a0b[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfederated_network[m[33m)[m trying to make render work
+[33m40e5cb9[m after trying to use groq
+[33m6199852[m[33m ([m[1;31morigin/federated_network[m[33m)[m Added more query options for filtering
+[33m28af921[m updated requirements.txt
+[33m348da09[m deleted migrations and run makemigration
+[33m1d5422d[m deleted migrations
+[33m5ba3a58[m render trying
+[33m9562f23[m trying to deploy
+[33me085dc1[m new version
+[33m5e431fc[m s
+[33me136ba3[m[33m ([m[1;31morigin/main[m[33m, [m[1;32mmain[m[33m)[m Added some images looks like
+[33m3620558[m changed index
+[33me3b7382[m New data changes
+[33m370ce88[m changes after meeting Birgit
+[33m09e58da[m small things
+[33md9d0b42[m trying to copy data
+[33mfb32677[m data
+[33m5475cd6[m last one
+[33m1afe7ce[m add semicolon after each command in render
+[33m83fcf92[m more modifying render
+[33mbf9f9c7[m Add proper render.yaml to force pip build
+[33mfc93215[m more render
+[33m920098f[m render in correct place
+[33m783409b[m add render.yml
+[33m35de760[m Add render.yaml to disable Poetry
+[33m5ac291c[m Initical deploy
+[33mddebad2[m updating git for university
+[33m91c5484[m DSGA Log after clicking submit
+[33med70d0b[m A git is needed for the prototype. Pushing all I have up until now
