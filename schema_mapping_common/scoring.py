@@ -57,8 +57,8 @@ class ScoringWeights:
       combined = sem_w * semantic + lex_w * lexical + boost_w * boost + boost
     where the extra '+ boost' makes boosts act as stabilizers.
     """
-    sem_w: float = 0.8
-    lex_w: float = 0.15
+    sem_w: float = 0.80
+    lex_w: float = 0.20
     boost_w: float = 0.5
 
 

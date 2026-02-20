@@ -344,10 +344,10 @@ def certificate_view(request, vid):
 
 
 @volunteer_login_required
+@ensure_csrf_cookie
 def onboard_view(request, vid):
     v = get_object_or_404(Volunteer, pk=vid)
     return render(request, "vms/onboard.html", {"volunteer": v})
-
 
 @volunteer_login_required
 def logs_view(request):

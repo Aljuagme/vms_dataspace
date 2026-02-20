@@ -11,7 +11,7 @@ from .data_structures import CanonicalProperty
 # -----------------------------------------------------------------------------
 # If LOCAL=True -> call Ollama on localhost (your current behavior)
 # If LOCAL=False -> call Groq API (hosted Llama 3.1)
-LOCAL = False
+LOCAL = True
 
 # -----------------------------------------------------------------------------
 # Local (Ollama) config
