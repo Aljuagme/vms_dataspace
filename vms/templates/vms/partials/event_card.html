@@ -23,7 +23,7 @@
           {% endif %}
 
           {% if e.isFinished %}
-            <span class="badge bg-dark">Finished</span>
+            <span class="badge bg-dark">Completed</span>
           {% endif %}
         </h3>
 
@@ -112,7 +112,7 @@
                   </button>
 
                   {% if e.isFinished %}
-                    <small class="text-danger d-block mt-1">Event is finished</small>
+                    <small class="text-danger d-block mt-1">Event is completed</small>
                   {% else %}
                     <small class="text-warning d-block mt-1">Missing required skills</small>
                   {% endif %}
@@ -124,7 +124,7 @@
               <form method="post" action="{% url 'vms:finish_event' volunteer.id e.id %}">
                 {% csrf_token %}
                 <button class="btn btn-outline-secondary btn-sm">
-                  <i class="bi bi-flag-checkered me-1"></i> Mark Finished
+                  <i class="bi bi-flag-checkered me-1"></i> Mark Completed
                 </button>
               </form>
             {% endif %}

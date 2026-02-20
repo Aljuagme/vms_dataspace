@@ -89,11 +89,11 @@
       {% endfor %}
 
       <!-- Finished Events -->
-      <h2 class="mt-5 mb-4">Finished Events</h2>
+      <h2 class="mt-5 mb-4">Completed Events</h2>
       {% for e in events_completed %}
         {% include "vms/partials/event_card.html" with e=e volunteer=volunteer show_details=True %}
       {% empty %}
-        <div class="alert alert-secondary">No finished events yet.</div>
+        <div class="alert alert-secondary">No completed events yet.</div>
       {% endfor %}
     </div>
 
