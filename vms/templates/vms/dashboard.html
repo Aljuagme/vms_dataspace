@@ -26,11 +26,11 @@
   </a>
 {#      —#}
     <a href="{% url 'vms:toggle_role' volunteer.id %}" class="text-decoration-none">
-{#        {% if volunteer.is_manager %}#}
-{#          <span class="badge bg-warning">Manager</span>#}
-{#        {% else %}#}
-{#          <span class="badge bg-info">Volunteer</span>#}
-{#        {% endif %}#}
+        {% if volunteer.is_manager %}
+          <span class="badge bg-warning">Manager</span>
+        {% else %}
+          <span class="badge bg-info">Volunteer</span>
+        {% endif %}
     </a>
   </p>
 
