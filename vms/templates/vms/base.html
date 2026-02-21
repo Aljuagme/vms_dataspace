@@ -22,7 +22,10 @@
                     {% if volunteer.is_manager %}
                         <a href="{% url 'vms:create_event' %}">Create Event</a>
 {#                        <a href="{% url 'vms:logs_view' %}">Auditor (Logs)</a>#}
-                        <a href="{% url 'vms:ranking' %}">Ranking</a>
+                        {% if volunteer.organization.member_ds %}
+                            <a href="{% url 'vms:ranking' %}">Ranking</a>
+                        {% endif %}
+
                         <a href="{% url 'vms:certificate' request.session.volunteer_id %}">Certificates</a>
 
                     {% else %}

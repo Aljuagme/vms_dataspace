@@ -109,6 +109,10 @@ TIME_RANGE_RE = re.compile(r"\b(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})\b")
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.IGNORECASE)
 PHONE_RE = re.compile(r"(\+?\d[\d\s().-]{6,}\d)")
 
+POSTAL_RE = re.compile(r"\b\d{4,6}\b")  # 4040, 10115, 28013, etc.
+STREET_WORD_RE = re.compile(r"\b(straße|strasse|street|st\.|road|rd\.|avenue|ave\.|platz|plaza|calle|carrer|via)\b", re.I)
+URL_RE = re.compile(r"https?://|www\.", re.I)
+
 WEEKDAYS = {
     "monday": "Monday", "tuesday": "Tuesday", "wednesday": "Wednesday", "thursday": "Thursday",
     "friday": "Friday", "saturday": "Saturday", "sunday": "Sunday",
@@ -213,7 +217,7 @@ def decide_mapping(
     if second is None or (best.combined - second.combined) >= margin:
         return "ACCEPTED", best.candidate, f"margin >= {margin:.2f}"
 
-    return "AMBIGUOUS", best.candidate, "needs admin / LLM"
+    return "AMBIGUOUS", best.candidate, "LLM activated:"
 
 
 def split_into_segments(text: str) -> List[str]:
@@ -628,3 +632,18 @@ def finalize_and_order_canonical(out: Dict[str, Any], *, entity: str) -> Dict[st
             ordered[k] = v
 
     return ordered
+
+
+def looks_like_address(s: str) -> bool:
+    t = s.strip()
+    digits = sum(ch.isdigit() for ch in t)
+    has_postal = bool(POSTAL_RE.search(t))
+    has_street_word = bool(STREET_WORD_RE.search(t))
+    has_commas = t.count(",") >= 1
+    # address-ish if: street word OR (postal + digits) OR (commas + digits)
+    return has_street_word or (has_postal and digits >= 3) or (has_commas and digits >= 3)
+
+
+def looks_like_contact(s: str) -> bool:
+    # reuse your EMAIL_RE / PHONE_RE if already imported in scoring.py
+    return bool(EMAIL_RE.search(s) or PHONE_RE.search(s) or URL_RE.search(s))

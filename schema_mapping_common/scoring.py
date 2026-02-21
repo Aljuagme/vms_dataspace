@@ -19,7 +19,7 @@ from schema_mapping_common.utilities import (
     TIME_RE,
     TIME_RANGE_RE,
     WEEKDAYS,
-    ANCHOR_VARIANTS,
+    ANCHOR_VARIANTS, looks_like_address, looks_like_contact,
 )
 
 class SemanticEncoder:
@@ -66,7 +66,7 @@ class ScoringWeights:
 class BoostConfig:
 
     # name-semantic boost threshold
-    name_sim_threshold: float = 0.2
+    name_sim_threshold: float = 0.35
     name_boost_value: float = 0.10
 
     # token overlap
@@ -115,6 +115,13 @@ def type_boost(example: Any, candidate: CanonicalProperty, cfg: BoostConfig) -> 
 
     if isinstance(example, str):
         ex = example.strip()
+
+        # address-like cue
+        if looks_like_address(ex):
+            if candidate.key in ("schema:location", "schema:address"):
+                boost += 0.05  # tune
+            if candidate.key == "schema:contactPoint" and not looks_like_contact(ex):
+                boost -= 0.1  # tune
 
         # Email
         if EMAIL_RE.search(ex):
