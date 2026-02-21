@@ -66,14 +66,16 @@ def ranking_view(request):
         return redirect("vms:login")
 
     dummy_ranking = [
-        {"name": "Rick", "skills": "Organization, Communication", "organization": "Helping Hands", "hours": 120},
+        {"name": "Rick", "skills": "Organization, Communication", "organization": "Adelante Mujer", "hours": 120},
         {"name": "You", "skills": "First Aid, Lead a team",
          "organization": volunteer.organization.name if volunteer.organization else "Independent",
          "hours": volunteer.total_hours()},
-        {"name": "Beck", "skills": "First Aid, Disaster Response", "organization": "Red Cross", "hours": 90},
-        {"name": "Maria", "skills": "Teaching, Creativity", "organization": "EduCare", "hours": 85},
-        {"name": "Mark", "skills": "Cooking, Teamwork", "organization": "Food for All", "hours": 60},
+        {"name": "Beck", "skills": "First Aid, Disaster Response", "organization": "Volgistics", "hours": 90},
+        {"name": "Maria", "skills": "Teaching, Creativity", "organization": "Better Impact", "hours": 85},
+        {"name": "Mark", "skills": "Cooking, Teamwork", "organization": "Mima", "hours": 60},
     ]
+
+    dummy_ranking = sorted(dummy_ranking, key=lambda x: x["hours"], reverse=True)
 
     return render(request, "vms/ranking.html", {
         "volunteer": volunteer,

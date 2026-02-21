@@ -221,7 +221,7 @@ class Volunteer(models.Model):
     events = models.ManyToManyField("VolunteerEvent", blank=True, related_name="volunteers")
 
     def total_hours(self):
-        return sum(int(e.duration_hours or 0) for e in self.events.all())
+        return sum(int(e.duration_hours if e.isFinished else 0) for e in self.events.all())
 
 
 class CertificateLog(models.Model):
